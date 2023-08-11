@@ -4,6 +4,16 @@
         "esp_http_client.h": "c",
         "array": "c",
         "string": "c",
-        "string_view": "c"
+        "string_view": "c",
+        "functional": "c",
+        "*.tcc": "c",
+        "optional": "c",
+        "ratio": "c",
+        "system_error": "c",
+        "regex": "c",
+        "tuple": "c",
+        "type_traits": "c",
+        "utility": "c",
+        "variant": "c"
     }
 }

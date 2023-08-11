@@ -15,6 +15,7 @@
 #include "lvgl.h"
 #include "board.h"
 #include "cJSON.h"
+//#define GET_JSON_ITEM(root, key) cJSON_GetObjectItemCaseSensitive(root, key)
 
 // #include "freertos/queue.h"
 // #include "rom/gpio.h"
@@ -70,6 +71,24 @@ void wifi_connection()
 }
 
 double extractBTCPrice(char *jsonMsg){
+    // cJSON *root = cJSON_Parse(jsonMsg);
+    // if (root == NULL) {ESP_LOGI("..", "failed to get json");}
+    // cJSON *usdObject = GET_JSON_ITEM(root, "data");
+    // if (usdObject == NULL) {ESP_LOGI("..", "failed to get data");}
+    // cJSON *object1 = GET_JSON_ITEM(usdObject, "1");
+    // if (object1 == NULL) {ESP_LOGI("..", "failed to get 1");}
+    // cJSON *quoteObject = GET_JSON_ITEM(object1, "quote");
+    // if (quoteObject == NULL) {ESP_LOGI("..", "failed to get quote");}
+    // cJSON *usdQuoteObject = GET_JSON_ITEM(quoteObject, "USD");
+    // if (usdQuoteObject == NULL) {ESP_LOGI("..", "failed to get usd");}
+    // double value = 0.0;
+    // cJSON *item = GET_JSON_ITEM(usdQuoteObject, "price"); 
+    // if (item != NULL && cJSON_IsNumber(item)) { 
+    //     value = item->valuedouble; 
+    // } else { 
+    //     /* Handle error */ 
+    // } 
+
     cJSON *root = cJSON_Parse(jsonMsg);
     double value = 0.0;
     if (root == NULL) {
@@ -103,12 +122,23 @@ esp_err_t client_event_get_handler(esp_http_client_event_handle_t evt)
     return ESP_OK;
 }
 
+// http_header_t headers[] = {
+//     { "Accepts", "application/json" },
+//     { "X-CMC_PRO_API_KEY", "91c1467c-1de3-4cf1-874f-bd82e4685fa1" },
+//     { NULL, NULL }
+// };
+
 void btc_price_task(void *pvParameters) {
     esp_http_client_config_t config = {
-        .url = "https://api.blockchain.com/v3/exchange/tickers/BTC-USD",
+        .url = "https://api.blockchain.com/v3/exchange/tickers/BTC-USD", //"https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest?symbol=BTC&convert=USD" 
         .method = HTTP_METHOD_GET,
         .cert_pem = NULL,
-        .event_handler = client_event_get_handler
+        .event_handler = client_event_get_handler,
+        //.http_headers = headers,
+        // .headers = {
+        //     .Accepts = "application/json",
+        //     .X_CMC_PRO_API_KEY = "91c1467c-1de3-4cf1-874f-bd82e4685fa1",
+        //     },
     };
     esp_http_client_handle_t client = esp_http_client_init(&config);
     
@@ -129,7 +159,7 @@ void btc_price_task(void *pvParameters) {
 
 void lvgl_task(void* arg) {
     for (;;) {
-        lv_label_set_text(ui_Label2, dispTxt);//lv_label_set_text(label1, myStr);
+        lv_label_set_text(ui_Label1, dispTxt);//lv_label_set_text(label1, myStr);
         lv_task_handler();
         vTaskDelay(pdMS_TO_TICKS(10));
     }
