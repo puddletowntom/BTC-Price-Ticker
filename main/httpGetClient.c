@@ -15,6 +15,7 @@
 #include "lvgl.h"
 #include "board.h"
 #include "cJSON.h"
+#include "esp_timer.h"
 //#define GET_JSON_ITEM(root, key) cJSON_GetObjectItemCaseSensitive(root, key)
 
 // #include "freertos/queue.h"
@@ -25,6 +26,7 @@
 static const char *TAG = "BTC_PRICE";
 
 char dispTxt[20];
+bool toggle = false;
 
 
 static void wifi_event_handler(void *event_handler_arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
@@ -36,9 +38,11 @@ static void wifi_event_handler(void *event_handler_arg, esp_event_base_t event_b
         break;
     case WIFI_EVENT_STA_CONNECTED:
         printf("WiFi connected ... \n");
+        lv_obj_clear_flag(ui_Image11, LV_OBJ_FLAG_HIDDEN); //Show the Wi-Fi logo
         break;
     case WIFI_EVENT_STA_DISCONNECTED:
         printf("WiFi lost connection ... \n");
+        lv_obj_add_flag(ui_Image11, LV_OBJ_FLAG_HIDDEN);  //Hide the Wi-Fi logo
         break;
     case IP_EVENT_STA_GOT_IP:
         printf("WiFi got IP ... \n\n");
