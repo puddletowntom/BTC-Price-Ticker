@@ -14,8 +14,8 @@ void ui_Screen1_screen_init(void)
     lv_img_set_src(ui_Image8, &ui_img_btc_logo1_png);
     lv_obj_set_width(ui_Image8, LV_SIZE_CONTENT);   /// 40
     lv_obj_set_height(ui_Image8, LV_SIZE_CONTENT);    /// 53
-    lv_obj_set_x(ui_Image8, 6);
-    lv_obj_set_y(ui_Image8, 146);
+    lv_obj_set_x(ui_Image8, 143);
+    lv_obj_set_y(ui_Image8, -3);
     lv_obj_set_align(ui_Image8, LV_ALIGN_CENTER);
     lv_obj_add_flag(ui_Image8, LV_OBJ_FLAG_ADV_HITTEST);     /// Flags
     lv_obj_clear_flag(ui_Image8, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
@@ -23,8 +23,8 @@ void ui_Screen1_screen_init(void)
     ui_Label1 = lv_label_create(ui_Screen1);
     lv_obj_set_width(ui_Label1, LV_SIZE_CONTENT);   /// 1
     lv_obj_set_height(ui_Label1, LV_SIZE_CONTENT);    /// 1
-    lv_obj_set_x(ui_Label1, 7);
-    lv_obj_set_y(ui_Label1, 7);
+    lv_obj_set_x(ui_Label1, 5);
+    lv_obj_set_y(ui_Label1, -4);
     lv_obj_set_align(ui_Label1, LV_ALIGN_CENTER);
     lv_obj_set_style_text_color(ui_Label1, lv_color_hex(0x24CF22), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_opa(ui_Label1, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
