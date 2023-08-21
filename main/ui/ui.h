@@ -20,6 +20,26 @@ extern lv_obj_t * ui_Screen1;
 extern lv_obj_t * ui_Image8;
 extern lv_obj_t * ui_Label1;
 extern lv_obj_t * ui_Image11;
+// SCREEN: ui_Screen2
+void ui_Screen2_screen_init(void);
+extern lv_obj_t * ui_Screen2;
+extern lv_obj_t * ui_Label2;
+extern lv_obj_t * ui_Label3;
+extern lv_obj_t * ui_Label4;
+extern lv_obj_t * ui_Label5;
+extern lv_obj_t * ui_Label6;
+extern lv_obj_t * ui_Label7;
+extern lv_obj_t * ui_Label8;
+extern lv_obj_t * ui_Label9;
+extern lv_obj_t * ui_Label10;
+extern lv_obj_t * ui_Label11;
+extern lv_obj_t * ui_Label12;
+extern lv_obj_t * ui_Label13;
+extern lv_obj_t * ui_Label14;
+extern lv_obj_t * ui_Label15;
+extern lv_obj_t * ui_Label16;
+extern lv_obj_t * ui_Label17;
+extern lv_obj_t * ui_Image2;
 extern lv_obj_t * ui____initial_actions0;
 
 LV_IMG_DECLARE(ui_img_btc_logo1_png);    // assets\btc_logo1.png

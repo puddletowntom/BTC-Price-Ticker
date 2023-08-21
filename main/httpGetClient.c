@@ -26,6 +26,20 @@
 static const char *TAG = "BTC_PRICE";
 
 char dispTxt[20];
+
+typedef struct{
+    char price[20];
+    char hash[50];
+    char fees[20];
+    char supply[20];
+    char volume[50];
+    char blockCount[20];
+    char blockInterval[20];
+    char blockSize[20];
+}BitcoinStats;
+
+BitcoinStats bitcoinStats;
+
 bool toggle = false;
 
 typedef struct{
@@ -150,8 +164,9 @@ esp_err_t clientStatsHandler(esp_http_client_event_handle_t evt)
             ESP_LOGI("Hashrate", "\n%f", hashrate);
             double fees = extractJsonVal(current_message, blockchainAPI.statsKeys[2]);
             ESP_LOGI("Fees", "\n%f", fees);
-            double supply = extractJsonVal(current_message, blockchainAPI.statsKeys[3]);
-            ESP_LOGI("Supply", "\n%f", supply);
+            double supplyDouble = extractJsonVal(current_message, blockchainAPI.statsKeys[3]);
+            int supply = (int)(supplyDouble / 10000000);
+            ESP_LOGI("Supply", "\n%d", supply);
             double volume = extractJsonVal(current_message, blockchainAPI.statsKeys[4]);
             ESP_LOGI("Volume", "\n%f", volume);
             double blockCount = extractJsonVal(current_message, blockchainAPI.statsKeys[5]);
@@ -160,6 +175,29 @@ esp_err_t clientStatsHandler(esp_http_client_event_handle_t evt)
             ESP_LOGI("BlockInterval", "\n%f", blockInterval);
             double blockSize = extractJsonVal(current_message, blockchainAPI.statsKeys[7]);
             ESP_LOGI("BlockSize", "\n%f", blockSize);
+
+            memset(bitcoinStats.price, 0, sizeof(bitcoinStats.price));
+            memset(bitcoinStats.hash, 0, sizeof(bitcoinStats.hash));
+            memset(bitcoinStats.fees, 0, sizeof(bitcoinStats.fees));
+            memset(bitcoinStats.supply, 0, sizeof(bitcoinStats.supply));
+            memset(bitcoinStats.volume, 0, sizeof(bitcoinStats.volume));
+            memset(bitcoinStats.blockCount, 0, sizeof(bitcoinStats.blockCount));
+            memset(bitcoinStats.blockInterval, 0, sizeof(bitcoinStats.blockInterval));
+            memset(bitcoinStats.blockSize, 0, sizeof(bitcoinStats.blockSize));
+
+            snprintf(bitcoinStats.price, sizeof(bitcoinStats.price), "$%.0f", price);
+            snprintf(bitcoinStats.hash, sizeof(bitcoinStats.hash), "%.0f", hashrate);
+            snprintf(bitcoinStats.fees, sizeof(bitcoinStats.fees), "%.0f", fees);
+            snprintf(bitcoinStats.supply, sizeof(bitcoinStats.supply), "%d", supply);
+            snprintf(bitcoinStats.volume, sizeof(bitcoinStats.volume), "%.0f", volume);
+            snprintf(bitcoinStats.blockCount, sizeof(bitcoinStats.blockCount), "%.0f", blockCount);
+            snprintf(bitcoinStats.blockInterval, sizeof(bitcoinStats.blockInterval), "%.1f mins", blockInterval);
+            snprintf(bitcoinStats.blockSize, sizeof(bitcoinStats.blockSize), "%.0f", blockSize);
+            
+
+
+           // memset(dispTxt, 0, sizeof(dispTxt));
+           // sprintf(dispTxt, "$%.0f", price);
             // Process the JSON data or perform other operations here
             break;
 
@@ -229,7 +267,15 @@ void btc_api_task(void *pvParameters) {
 
 void lvgl_task(void* arg) {
     for (;;) {
-        lv_label_set_text(ui_Label1, dispTxt);//lv_label_set_text(label1, myStr);
+        //lv_label_set_text(ui_Label1, dispTxt);//lv_label_set_text(label1, myStr);
+        lv_label_set_text(ui_Label10, bitcoinStats.price);
+        lv_label_set_text(ui_Label11, bitcoinStats.hash);
+        lv_label_set_text(ui_Label12, bitcoinStats.fees);
+        lv_label_set_text(ui_Label13, bitcoinStats.supply);
+        lv_label_set_text(ui_Label14, bitcoinStats.volume);
+        lv_label_set_text(ui_Label15, bitcoinStats.blockCount);
+        lv_label_set_text(ui_Label16, bitcoinStats.blockInterval);
+        lv_label_set_text(ui_Label17, bitcoinStats.blockSize);
         lv_task_handler();
         vTaskDelay(pdMS_TO_TICKS(10));
     }
@@ -259,5 +305,5 @@ void app_main() {
     // params->statsFlag = false;
 
     xTaskCreate(&btc_api_task, "btc_stats_task", 2*4096, params, 5, NULL);
-   // xTaskCreatePinnedToCore(lvgl_task, "LCD", 8 * 1024, NULL, 5, NULL, 1);
+    xTaskCreatePinnedToCore(lvgl_task, "LCD", 8 * 1024, NULL, 5, NULL, 1);
 }
