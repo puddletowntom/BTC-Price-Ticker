@@ -48,6 +48,7 @@ LV_IMG_DECLARE(ui_img_wifi_logo2_png);    // assets\wifi_logo2.png
 
 LV_FONT_DECLARE(ui_font_Display24);
 LV_FONT_DECLARE(ui_font_Display48);
+LV_FONT_DECLARE(ui_font_MontBig);
 
 void ui_init(void);
 
