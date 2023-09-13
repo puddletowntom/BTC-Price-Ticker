@@ -7,6 +7,7 @@ SET(SOURCES screens/ui_Screen1.c
     images/ui_img_wifi_logo3_png.c
     images/ui_img_wifi_logo2_png.c
     fonts/ui_font_Display24.c
-    fonts/ui_font_Display48.c)
+    fonts/ui_font_Display48.c
+    fonts/ui_font_MontBig.c)
 
 add_library(ui ${SOURCES})

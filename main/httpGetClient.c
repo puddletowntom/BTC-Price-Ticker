@@ -16,6 +16,9 @@
 #include "board.h"
 #include "cJSON.h"
 #include "esp_timer.h"
+#include "esp_wps.h"
+#include "esp_event.h"
+#include <string.h>
 //#define GET_JSON_ITEM(root, key) cJSON_GetObjectItemCaseSensitive(root, key)
 
 // #include "freertos/queue.h"
@@ -23,6 +26,26 @@
 // #include "driver/gpio.h"
 // #include "esp_timer.h"
 
+/*set wps mode via project configuration */
+#if CONFIG_EXAMPLE_WPS_TYPE_PBC
+#define WPS_MODE WPS_TYPE_PBC
+#elif CONFIG_EXAMPLE_WPS_TYPE_PIN
+#define WPS_MODE WPS_TYPE_PIN
+#else
+#define WPS_MODE WPS_TYPE_DISABLE
+#endif /*CONFIG_EXAMPLE_WPS_TYPE_PBC*/
+
+#define MAX_RETRY_ATTEMPTS     2
+
+#ifndef PIN2STR
+#define PIN2STR(a) (a)[0], (a)[1], (a)[2], (a)[3], (a)[4], (a)[5], (a)[6], (a)[7]
+#define PINSTR "%c%c%c%c%c%c%c%c"
+#endif
+
+static esp_wps_config_t config = WPS_CONFIG_INIT_DEFAULT(WPS_MODE);
+static wifi_config_t wps_ap_creds[MAX_WPS_AP_CRED];
+static int s_ap_creds_num = 0;
+static int s_retry_num = 0;
 static const char *TAG = "BTC_PRICE";
 
 char dispTxt[20];
@@ -69,26 +92,90 @@ BlockchainAPI blockchainAPI = {
     {"market_price_usd", "hash_rate", "total_fees_btc", "totalbc", "trade_volume_usd", "n_blocks_total", "minutes_between_blocks", "blocks_size"},
 };
 
-static void wifi_event_handler(void *event_handler_arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
+static void wifi_event_handler(void* arg, esp_event_base_t event_base,
+                                int32_t event_id, void* event_data)
 {
-    switch (event_id)
-    {
-    case WIFI_EVENT_STA_START:
-        printf("WiFi connecting ... \n");
-        break;
-    case WIFI_EVENT_STA_CONNECTED:
-        printf("WiFi connected ... \n");
-        lv_obj_clear_flag(ui_Image11, LV_OBJ_FLAG_HIDDEN); //Show the Wi-Fi logo
-        break;
-    case WIFI_EVENT_STA_DISCONNECTED:
-        printf("WiFi lost connection ... \n");
-        lv_obj_add_flag(ui_Image11, LV_OBJ_FLAG_HIDDEN);  //Hide the Wi-Fi logo
-        break;
-    case IP_EVENT_STA_GOT_IP:
-        printf("WiFi got IP ... \n\n");
-        break;
-    default:
-        break;
+    static int ap_idx = 1;
+
+    switch (event_id) {
+        case WIFI_EVENT_STA_START:
+            ESP_LOGI(TAG, "WIFI_EVENT_STA_START");
+            break;
+        case WIFI_EVENT_STA_CONNECTED:
+            ESP_LOGI(TAG, "WIFI_CONNECTED");
+            lv_obj_clear_flag(ui_Image11, LV_OBJ_FLAG_HIDDEN); //Show the Wi-Fi logo
+            break;
+        case WIFI_EVENT_STA_DISCONNECTED:
+            ESP_LOGI(TAG, "WIFI_EVENT_STA_DISCONNECTED");
+            lv_obj_add_flag(ui_Image11, LV_OBJ_FLAG_HIDDEN);  //Hide the Wi-Fi logo
+            if (s_retry_num < MAX_RETRY_ATTEMPTS) {
+                esp_wifi_connect();
+                s_retry_num++;
+            } else if (ap_idx < s_ap_creds_num) {
+                /* Try the next AP credential if first one fails */
+
+                if (ap_idx < s_ap_creds_num) {
+                    ESP_LOGI(TAG, "Connecting to SSID: %s, Passphrase: %s",
+                             wps_ap_creds[ap_idx].sta.ssid, wps_ap_creds[ap_idx].sta.password);
+                    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wps_ap_creds[ap_idx++]) );
+                    esp_wifi_connect();
+                }
+                s_retry_num = 0;
+            } else {
+                ESP_LOGI(TAG, "Failed to connect!");
+            }
+
+            break;
+        case WIFI_EVENT_STA_WPS_ER_SUCCESS:
+            ESP_LOGI(TAG, "WIFI_EVENT_STA_WPS_ER_SUCCESS");
+            {
+                wifi_event_sta_wps_er_success_t *evt =
+                    (wifi_event_sta_wps_er_success_t *)event_data;
+                int i;
+
+                if (evt) {
+                    ESP_LOGI("Ronan: ","Got here");
+                    s_ap_creds_num = evt->ap_cred_cnt;
+                    for (i = 0; i < s_ap_creds_num; i++) {
+                        memcpy(wps_ap_creds[i].sta.ssid, evt->ap_cred[i].ssid,
+                               sizeof(evt->ap_cred[i].ssid));
+                        memcpy(wps_ap_creds[i].sta.password, evt->ap_cred[i].passphrase,
+                               sizeof(evt->ap_cred[i].passphrase));
+                    }
+                    /* If multiple AP credentials are received from WPS, connect with first one */
+                    ESP_LOGI(TAG, "Connecting to SSID: %s, Passphrase: %s",
+                             wps_ap_creds[0].sta.ssid, wps_ap_creds[0].sta.password);
+                    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wps_ap_creds[0]) );
+                }
+                /*
+                 * If only one AP credential is received from WPS, there will be no event data and
+                 * esp_wifi_set_config() is already called by WPS modules for backward compatibility
+                 * with legacy apps. So directly attempt connection here.
+                 */
+                ESP_ERROR_CHECK(esp_wifi_wps_disable());
+                esp_wifi_connect();
+            }
+            break;
+        case WIFI_EVENT_STA_WPS_ER_FAILED:
+            ESP_LOGI(TAG, "WIFI_EVENT_STA_WPS_ER_FAILED");
+            ESP_ERROR_CHECK(esp_wifi_wps_disable());
+            ESP_ERROR_CHECK(esp_wifi_wps_enable(&config));
+            ESP_ERROR_CHECK(esp_wifi_wps_start(0));
+            break;
+        case WIFI_EVENT_STA_WPS_ER_TIMEOUT:
+            ESP_LOGI(TAG, "WIFI_EVENT_STA_WPS_ER_TIMEOUT");
+            ESP_ERROR_CHECK(esp_wifi_wps_disable());
+            ESP_ERROR_CHECK(esp_wifi_wps_enable(&config));
+            ESP_ERROR_CHECK(esp_wifi_wps_start(0));
+            break;
+        case WIFI_EVENT_STA_WPS_ER_PIN:
+            ESP_LOGI(TAG, "WIFI_EVENT_STA_WPS_ER_PIN");
+            /* display the PIN code */
+            wifi_event_sta_wps_er_pin_t* event = (wifi_event_sta_wps_er_pin_t*) event_data;
+            ESP_LOGI(TAG, "WPS_PIN = " PINSTR, PIN2STR(event->pin_code));
+            break;
+        default:
+            break;
     }
 }
 
@@ -103,16 +190,56 @@ void wifi_connection()
     // 2 - Wi-Fi Configuration Phase
     esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, wifi_event_handler, NULL);
     esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, wifi_event_handler, NULL);
-    wifi_config_t wifi_configuration = {
-        .sta = {
-            .ssid = SSID,
-            .password = PASS}};
-    esp_wifi_set_config(ESP_IF_WIFI_STA, &wifi_configuration);
+    // wifi_config_t wifi_configuration = {
+    //     .sta = {
+    //         .ssid = SSID,
+    //         .password = PASS}};
+
+    wifi_config_t config;
+    esp_err_t err = esp_wifi_get_config(WIFI_IF_STA, &config); 
+    if (err == ESP_OK) {
+        ESP_LOGI("RONAN: ", "SSID: %s, PW: %s\n", (char*) config.sta.ssid, (char*) config.sta.password);
+    } else {
+        ESP_LOGI("RONAN: ", "Couldn't get config: %d\n", (int) err);
+    }
+
+    esp_wifi_set_config(ESP_IF_WIFI_STA, &config);
     // 3 - Wi-Fi Start Phase
     esp_wifi_start();
     // 4- Wi-Fi Connect Phase
     esp_wifi_connect();
 }
+
+static void got_ip_event_handler(void* arg, esp_event_base_t event_base,
+                             int32_t event_id, void* event_data)
+{
+    ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
+    ESP_LOGI(TAG, "got ip: " IPSTR, IP2STR(&event->ip_info.ip));
+}
+
+/*init wifi as sta and start wps*/
+static void start_wps(void)
+{
+    ESP_ERROR_CHECK(esp_netif_init());
+    ESP_ERROR_CHECK(esp_event_loop_create_default());
+    esp_netif_t *sta_netif = esp_netif_create_default_wifi_sta();
+    assert(sta_netif);
+
+    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+
+    ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL));
+    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &got_ip_event_handler, NULL));
+
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+    ESP_ERROR_CHECK(esp_wifi_start());
+
+    ESP_LOGI(TAG, "start wps...");
+    
+    ESP_ERROR_CHECK(esp_wifi_wps_enable(&config));
+    ESP_ERROR_CHECK(esp_wifi_wps_start(0));
+}
+
 
 double extractJsonVal(char *jsonMsg, char *jsonKey){
     cJSON *root = cJSON_Parse(jsonMsg);
@@ -268,14 +395,15 @@ void btc_api_task(void *pvParameters) {
 void lvgl_task(void* arg) {
     for (;;) {
         //lv_label_set_text(ui_Label1, dispTxt);//lv_label_set_text(label1, myStr);
-        lv_label_set_text(ui_Label10, bitcoinStats.price);
-        lv_label_set_text(ui_Label11, bitcoinStats.hash);
-        lv_label_set_text(ui_Label12, bitcoinStats.fees);
-        lv_label_set_text(ui_Label13, bitcoinStats.supply);
-        lv_label_set_text(ui_Label14, bitcoinStats.volume);
-        lv_label_set_text(ui_Label15, bitcoinStats.blockCount);
-        lv_label_set_text(ui_Label16, bitcoinStats.blockInterval);
-        lv_label_set_text(ui_Label17, bitcoinStats.blockSize);
+        // lv_label_set_text(ui_Label10, bitcoinStats.price);
+        // lv_label_set_text(ui_Label11, bitcoinStats.hash);
+        // lv_label_set_text(ui_Label12, bitcoinStats.fees);
+        // lv_label_set_text(ui_Label13, bitcoinStats.supply);
+        // lv_label_set_text(ui_Label14, bitcoinStats.volume);
+        // lv_label_set_text(ui_Label15, bitcoinStats.blockCount);
+        // lv_label_set_text(ui_Label16, bitcoinStats.blockInterval);
+        // lv_label_set_text(ui_Label17, bitcoinStats.blockSize);
+        lv_label_set_text(ui_Label1, bitcoinStats.blockInterval);
         lv_task_handler();
         vTaskDelay(pdMS_TO_TICKS(10));
     }
@@ -283,7 +411,14 @@ void lvgl_task(void* arg) {
 extern void screen_init(void);
 
 void app_main() {
-    nvs_flash_init();
+    /* Initialize NVS — it is used to store PHY calibration data */
+    esp_err_t ret = nvs_flash_init();
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        ret = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK( ret );
+    start_wps();
     wifi_connection();
     screen_init();
     ui_init();
