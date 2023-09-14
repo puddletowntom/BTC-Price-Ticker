@@ -103,11 +103,11 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
             break;
         case WIFI_EVENT_STA_CONNECTED:
             ESP_LOGI(TAG, "WIFI_CONNECTED");
-            lv_obj_clear_flag(ui_Image11, LV_OBJ_FLAG_HIDDEN); //Show the Wi-Fi logo
+            //lv_obj_clear_flag(ui_Image11, LV_OBJ_FLAG_HIDDEN); //Show the Wi-Fi logo
             break;
         case WIFI_EVENT_STA_DISCONNECTED:
             ESP_LOGI(TAG, "WIFI_EVENT_STA_DISCONNECTED");
-            lv_obj_add_flag(ui_Image11, LV_OBJ_FLAG_HIDDEN);  //Hide the Wi-Fi logo
+            //lv_obj_add_flag(ui_Image11, LV_OBJ_FLAG_HIDDEN);  //Hide the Wi-Fi logo
             if (s_retry_num < MAX_RETRY_ATTEMPTS) {
                 esp_wifi_connect();
                 s_retry_num++;
@@ -179,36 +179,37 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
     }
 }
 
-void wifi_connection()
-{
-    // 1 - Wi-Fi/LwIP Init Phase
-    esp_netif_init();                    // TCP/IP initiation 					s1.1
-    esp_event_loop_create_default();     // event loop 			                s1.2
-    esp_netif_create_default_wifi_sta(); // WiFi station 	                    s1.3
-    wifi_init_config_t wifi_initiation = WIFI_INIT_CONFIG_DEFAULT();
-    esp_wifi_init(&wifi_initiation); // 					                    s1.4
-    // 2 - Wi-Fi Configuration Phase
-    esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, wifi_event_handler, NULL);
-    esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, wifi_event_handler, NULL);
-    // wifi_config_t wifi_configuration = {
-    //     .sta = {
-    //         .ssid = SSID,
-    //         .password = PASS}};
+// void wifi_connection()
+// {
+//     // 1 - Wi-Fi/LwIP Init Phase
+//     esp_netif_init();                    // TCP/IP initiation 					s1.1
+//     esp_event_loop_create_default();     // event loop 			                s1.2
+//     esp_netif_create_default_wifi_sta(); // WiFi station 	                    s1.3
+//     wifi_init_config_t wifi_initiation = WIFI_INIT_CONFIG_DEFAULT();
+//     esp_wifi_init(&wifi_initiation); // 					                    s1.4
+//     // 2 - Wi-Fi Configuration Phase
+//     esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, wifi_event_handler, NULL);
+//     esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, wifi_event_handler, NULL);
+//     // wifi_config_t wifi_configuration = {
+//     //     .sta = {
+//     //         .ssid = SSID,
+//     //         .password = PASS}};
 
-    wifi_config_t config;
-    esp_err_t err = esp_wifi_get_config(WIFI_IF_STA, &config); 
-    if (err == ESP_OK) {
-        ESP_LOGI("RONAN: ", "SSID: %s, PW: %s\n", (char*) config.sta.ssid, (char*) config.sta.password);
-    } else {
-        ESP_LOGI("RONAN: ", "Couldn't get config: %d\n", (int) err);
-    }
+//     wifi_config_t config;
+//     esp_err_t err = esp_wifi_get_config(WIFI_IF_STA, &config); 
+//     if (err == ESP_OK) {
+//         ESP_LOGI("RONAN: ", "SSID: %s, PW: %s\n", (char*) config.sta.ssid, (char*) config.sta.password);
+//     } else {
+//         ESP_LOGI("RONAN: ", "Couldn't get config: %d\n", (int) err);
+//         //start_wps(); //If you cant get the SSID/Password then run WPS.
+//     }
 
-    esp_wifi_set_config(ESP_IF_WIFI_STA, &config);
-    // 3 - Wi-Fi Start Phase
-    esp_wifi_start();
-    // 4- Wi-Fi Connect Phase
-    esp_wifi_connect();
-}
+//     esp_wifi_set_config(ESP_IF_WIFI_STA, &config);
+//     // 3 - Wi-Fi Start Phase
+//     esp_wifi_start();
+//     // 4- Wi-Fi Connect Phase
+//     esp_wifi_connect();
+// }
 
 static void got_ip_event_handler(void* arg, esp_event_base_t event_base,
                              int32_t event_id, void* event_data)
@@ -230,16 +231,28 @@ static void start_wps(void)
 
     ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL));
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &got_ip_event_handler, NULL));
-
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-    ESP_ERROR_CHECK(esp_wifi_start());
 
-    ESP_LOGI(TAG, "start wps...");
-    
-    ESP_ERROR_CHECK(esp_wifi_wps_enable(&config));
-    ESP_ERROR_CHECK(esp_wifi_wps_start(0));
+    wifi_config_t wifi_config;
+    esp_err_t err = esp_wifi_get_config(WIFI_IF_STA, &wifi_config); 
+    if (err == ESP_OK) {
+        ESP_LOGI("RONAN: ", "SSID: %s, PW: %s\n", (char*) wifi_config.sta.ssid, (char*) wifi_config.sta.password);
+        esp_wifi_set_config(ESP_IF_WIFI_STA, &wifi_config);
+        esp_err_t errStart = esp_wifi_start();
+        esp_err_t errConnect = esp_wifi_connect(); 
+
+        if(errStart != ESP_OK || errConnect != ESP_OK){
+            ESP_LOGI(TAG, "start wps...");
+            ESP_ERROR_CHECK(esp_wifi_wps_enable(&config));
+            ESP_ERROR_CHECK(esp_wifi_wps_start(0)); 
+        }
+    } else {
+        ESP_LOGI("RONAN: ", "Couldn't get config: %d\n", (int) err);
+        ESP_LOGI(TAG, "start wps...");
+        ESP_ERROR_CHECK(esp_wifi_wps_enable(&config));
+        ESP_ERROR_CHECK(esp_wifi_wps_start(0)); 
+    }
 }
-
 
 double extractJsonVal(char *jsonMsg, char *jsonKey){
     cJSON *root = cJSON_Parse(jsonMsg);
@@ -418,8 +431,10 @@ void app_main() {
         ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK( ret );
+    ESP_LOGI("pp", "Got passed here");
+    //wifi_connection();
     start_wps();
-    wifi_connection();
+    ESP_LOGI("..", "Done with WPS");
     screen_init();
     ui_init();
     
