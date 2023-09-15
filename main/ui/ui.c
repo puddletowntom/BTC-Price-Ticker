@@ -34,6 +34,16 @@ lv_obj_t * ui_Label14;
 lv_obj_t * ui_Label15;
 lv_obj_t * ui_Label16;
 lv_obj_t * ui_Label17;
+
+lv_obj_t * ui_Panel1;
+lv_obj_t * ui_Panel2;
+lv_obj_t * ui_Panel3;
+lv_obj_t * ui_Panel4;
+lv_obj_t * ui_Panel5;
+lv_obj_t * ui_Panel6;
+lv_obj_t * ui_Panel7;
+lv_obj_t * ui_Panel8;
+
 lv_obj_t * ui_Image2;
 lv_obj_t * ui____initial_actions0;
 const lv_img_dsc_t * ui_imgset_btc_logo[1] = {&ui_img_btc_logo1_png};
@@ -60,7 +70,7 @@ void ui_init(void)
                                                true, LV_FONT_DEFAULT);
     lv_disp_set_theme(dispp, theme);
     ui_Screen1_screen_init();
-    ui_Screen2_screen_init();
+    //ui_Screen2_screen_init();
     ui____initial_actions0 = lv_obj_create(NULL);
     lv_disp_load_scr(ui_Screen1);
 }

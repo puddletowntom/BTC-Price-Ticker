@@ -39,6 +39,16 @@ extern lv_obj_t * ui_Label14;
 extern lv_obj_t * ui_Label15;
 extern lv_obj_t * ui_Label16;
 extern lv_obj_t * ui_Label17;
+
+extern lv_obj_t * ui_Panel1; 
+extern lv_obj_t * ui_Panel2; 
+extern lv_obj_t * ui_Panel3; 
+extern lv_obj_t * ui_Panel4; 
+extern lv_obj_t * ui_Panel5; 
+extern lv_obj_t * ui_Panel6; 
+extern lv_obj_t * ui_Panel7;
+extern lv_obj_t * ui_Panel8;  
+
 extern lv_obj_t * ui_Image2;
 extern lv_obj_t * ui____initial_actions0;
 

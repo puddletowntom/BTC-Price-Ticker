@@ -333,9 +333,15 @@ esp_err_t clientStatsHandler(esp_http_client_event_handle_t evt)
             snprintf(bitcoinStats.blockCount, sizeof(bitcoinStats.blockCount), "%.0f", blockCount);
             snprintf(bitcoinStats.blockInterval, sizeof(bitcoinStats.blockInterval), "%.1f mins", blockInterval);
             snprintf(bitcoinStats.blockSize, sizeof(bitcoinStats.blockSize), "%.0f", blockSize);
-            
 
-
+            lv_label_set_text(ui_Label2, bitcoinStats.price);
+            lv_label_set_text(ui_Label4, bitcoinStats.hash);
+            lv_label_set_text(ui_Label7, bitcoinStats.fees);
+            lv_label_set_text(ui_Label9, bitcoinStats.supply);
+            lv_label_set_text(ui_Label11, bitcoinStats.volume);
+            lv_label_set_text(ui_Label13, bitcoinStats.blockCount);
+            lv_label_set_text(ui_Label15, bitcoinStats.blockInterval);
+            lv_label_set_text(ui_Label17, bitcoinStats.blockSize);
            // memset(dispTxt, 0, sizeof(dispTxt));
            // sprintf(dispTxt, "$%.0f", price);
             // Process the JSON data or perform other operations here
@@ -405,23 +411,16 @@ void btc_api_task(void *pvParameters) {
     esp_http_client_cleanup(client);
 }
 
-void lvgl_task(void* arg) {
-    for (;;) {
-        //lv_label_set_text(ui_Label1, dispTxt);//lv_label_set_text(label1, myStr);
-        // lv_label_set_text(ui_Label10, bitcoinStats.price);
-        // lv_label_set_text(ui_Label11, bitcoinStats.hash);
-        // lv_label_set_text(ui_Label12, bitcoinStats.fees);
-        // lv_label_set_text(ui_Label13, bitcoinStats.supply);
-        // lv_label_set_text(ui_Label14, bitcoinStats.volume);
-        // lv_label_set_text(ui_Label15, bitcoinStats.blockCount);
-        // lv_label_set_text(ui_Label16, bitcoinStats.blockInterval);
-        // lv_label_set_text(ui_Label17, bitcoinStats.blockSize);
-        lv_label_set_text(ui_Label1, bitcoinStats.blockInterval);
+extern void screen_init(void);
+
+void lvgl_task(void *pvParameters) {
+    // LVGL initialization, UI setup, and event handling
+    // This task should regularly call lv_task_handler() to update the UI.
+    while (1) {
         lv_task_handler();
-        vTaskDelay(pdMS_TO_TICKS(10));
+        vTaskDelay(pdMS_TO_TICKS(10)); // Adjust the delay as needed
     }
 }
-extern void screen_init(void);
 
 void app_main() {
     /* Initialize NVS — it is used to store PHY calibration data */
@@ -438,7 +437,7 @@ void app_main() {
     screen_init();
     ui_init();
     
-    TaskParams *params = (TaskParams *)malloc(sizeof(TaskParams));
+    TaskParams *params = (TaskParams *)malloc(sizeof(TaskParams)); 
     if (params == NULL) {
         printf("Memory allocation failed.\n");
         return;
@@ -453,7 +452,6 @@ void app_main() {
     // }
     // params->api_url = blockchainAPI.bcperblock;
     // params->statsFlag = false;
-
+    xTaskCreatePinnedToCore(lvgl_task, "LCD", 8 * 1024, NULL, 3, NULL, 1);
     xTaskCreate(&btc_api_task, "btc_stats_task", 2*4096, params, 5, NULL);
-    xTaskCreatePinnedToCore(lvgl_task, "LCD", 8 * 1024, NULL, 5, NULL, 1);
 }
