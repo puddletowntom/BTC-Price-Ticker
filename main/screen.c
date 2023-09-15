@@ -63,6 +63,7 @@ void qmsd_rgb_init(esp_lcd_rgb_panel_config_t *panel_config)
     disp_drv.draw_buf = &draw_buf;
     disp_drv.hor_res = panel_config->timings.h_res;
     disp_drv.ver_res = panel_config->timings.v_res;
+	//disp_drv.rotated = 1; //Flip display 90 degrees to the right for USB stand.
     lv_disp_drv_register(&disp_drv);
 }
 

@@ -62,6 +62,8 @@ typedef struct{
 }BitcoinStats;
 
 BitcoinStats bitcoinStats;
+char mcapResult[20];
+char btcPerBlock[20];
 
 bool toggle = false;
 
@@ -75,11 +77,6 @@ typedef struct{
     char *btcTicker;
     char statsKeys[8][50];
 }BlockchainAPI;
-
-typedef struct{
-    char *api_url;
-    bool statsFlag;
-}TaskParams;
 
 BlockchainAPI blockchainAPI = {
     .stats = "https://api.blockchain.info/stats",
@@ -302,10 +299,14 @@ esp_err_t clientStatsHandler(esp_http_client_event_handle_t evt)
             ESP_LOGI("Price", "\n%f", price);
             double hashrate = extractJsonVal(current_message, blockchainAPI.statsKeys[1]);
             ESP_LOGI("Hashrate", "\n%f", hashrate);
+            hashrate = hashrate/1000000000;
             double fees = extractJsonVal(current_message, blockchainAPI.statsKeys[2]);
+            if(fees < 0){
+                fees = 0;
+            }
             ESP_LOGI("Fees", "\n%f", fees);
             double supplyDouble = extractJsonVal(current_message, blockchainAPI.statsKeys[3]);
-            int supply = (int)(supplyDouble / 10000000);
+            int supply = (int)(supplyDouble / 100000000);
             ESP_LOGI("Supply", "\n%d", supply);
             double volume = extractJsonVal(current_message, blockchainAPI.statsKeys[4]);
             ESP_LOGI("Volume", "\n%f", volume);
@@ -326,22 +327,21 @@ esp_err_t clientStatsHandler(esp_http_client_event_handle_t evt)
             memset(bitcoinStats.blockSize, 0, sizeof(bitcoinStats.blockSize));
 
             snprintf(bitcoinStats.price, sizeof(bitcoinStats.price), "$%.0f", price);
-            snprintf(bitcoinStats.hash, sizeof(bitcoinStats.hash), "%.0f", hashrate);
-            snprintf(bitcoinStats.fees, sizeof(bitcoinStats.fees), "%.0f", fees);
-            snprintf(bitcoinStats.supply, sizeof(bitcoinStats.supply), "%d", supply);
-            snprintf(bitcoinStats.volume, sizeof(bitcoinStats.volume), "%.0f", volume);
+            snprintf(bitcoinStats.hash, sizeof(bitcoinStats.hash), "%.0f EX/h", hashrate);
+            snprintf(bitcoinStats.fees, sizeof(bitcoinStats.fees), "$%.0f", fees);
+            snprintf(bitcoinStats.supply, sizeof(bitcoinStats.supply), "%d btc", supply);
+            snprintf(bitcoinStats.volume, sizeof(bitcoinStats.volume), "$%.0f", volume);
             snprintf(bitcoinStats.blockCount, sizeof(bitcoinStats.blockCount), "%.0f", blockCount);
             snprintf(bitcoinStats.blockInterval, sizeof(bitcoinStats.blockInterval), "%.1f mins", blockInterval);
             snprintf(bitcoinStats.blockSize, sizeof(bitcoinStats.blockSize), "%.0f", blockSize);
 
             lv_label_set_text(ui_Label2, bitcoinStats.price);
-            lv_label_set_text(ui_Label4, bitcoinStats.hash);
-            lv_label_set_text(ui_Label7, bitcoinStats.fees);
-            lv_label_set_text(ui_Label9, bitcoinStats.supply);
-            lv_label_set_text(ui_Label11, bitcoinStats.volume);
-            lv_label_set_text(ui_Label13, bitcoinStats.blockCount);
-            lv_label_set_text(ui_Label15, bitcoinStats.blockInterval);
-            lv_label_set_text(ui_Label17, bitcoinStats.blockSize);
+            lv_label_set_text(ui_Label7, bitcoinStats.supply);
+            lv_label_set_text(ui_Label9, bitcoinStats.fees);
+            lv_label_set_text(ui_Label13, bitcoinStats.blockInterval);
+            lv_label_set_text(ui_Label15, bitcoinStats.volume);
+            lv_label_set_text(ui_Label17, bitcoinStats.hash);
+
            // memset(dispTxt, 0, sizeof(dispTxt));
            // sprintf(dispTxt, "$%.0f", price);
             // Process the JSON data or perform other operations here
@@ -353,14 +353,32 @@ esp_err_t clientStatsHandler(esp_http_client_event_handle_t evt)
     return ESP_OK;
 }
 
-esp_err_t clientSingleHandler(esp_http_client_event_handle_t evt)
+esp_err_t perBlockHandler(esp_http_client_event_handle_t evt)
 {
     switch (evt->event_id)
     {
     case HTTP_EVENT_ON_DATA:
-        printf("HTTP_EVENT_ON_DATA: %.*s\n", evt->data_len, (char *)evt->data);
-        memset(dispTxt, 0, sizeof(dispTxt));
-        sprintf(dispTxt, "%s", (char *)evt->data);
+        printf("perBlockHandler: %.*s\n", evt->data_len, (char *)evt->data);
+        memset(btcPerBlock, 0, sizeof(btcPerBlock));
+        snprintf(btcPerBlock, sizeof(btcPerBlock), "%.*s", evt->data_len, (char *)evt->data);
+        lv_label_set_text(ui_Label11, btcPerBlock);
+        break;
+
+    default:
+        break;
+    }
+    return ESP_OK;
+}
+
+esp_err_t mcapHandler(esp_http_client_event_handle_t evt)
+{
+    switch (evt->event_id)
+    {
+    case HTTP_EVENT_ON_DATA:
+        printf("mcapHandler: %.*s\n", evt->data_len, (char *)evt->data);
+        memset(mcapResult, 0, sizeof(mcapResult));
+        snprintf(mcapResult, sizeof(mcapResult), "%.*s", evt->data_len, (char *)evt->data);
+        lv_label_set_text(ui_Label4, mcapResult);
         break;
 
     default:
@@ -376,40 +394,40 @@ esp_err_t clientSingleHandler(esp_http_client_event_handle_t evt)
 //     { NULL, NULL }
 // };
 
-void btc_api_task(void *pvParameters) {
+// void btc_api_task(void *pvParameters) {
 
-    TaskParams *params = (TaskParams*)pvParameters;
+//     TaskParams *params = (TaskParams*)pvParameters;
 
-    esp_http_client_config_t config = {
-        .url = params->api_url, //"https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest?symbol=BTC&convert=USD" 
-        .method = HTTP_METHOD_GET,
-        .cert_pem = NULL,
-        //.event_handler = clientStatsHandler,
-        //.user_data = blockchainAPI.statsKeys[0]
-    };
+//     esp_http_client_config_t config = {
+//         .url = params->api_url, //"https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest?symbol=BTC&convert=USD" 
+//         .method = HTTP_METHOD_GET,
+//         .cert_pem = NULL,
+//         //.event_handler = clientStatsHandler,
+//         //.user_data = blockchainAPI.statsKeys[0]
+//     };
 
-    if(params->statsFlag){
-        config.event_handler = clientStatsHandler;
-    }else{
-        config.event_handler = clientSingleHandler;
-    }
+//     if(params->statsFlag){
+//         config.event_handler = clientStatsHandler;
+//     }else{
+//         config.event_handler = clientSingleHandler;
+//     }
     
-    esp_http_client_handle_t client = esp_http_client_init(&config);
+//     esp_http_client_handle_t client = esp_http_client_init(&config);
     
-    while (1) {
-        esp_err_t err = esp_http_client_perform(client);
+//     while (1) {
+//         esp_err_t err = esp_http_client_perform(client);
         
-        if (err == ESP_OK) {
-            ESP_LOGE(TAG, "HTTP Success");
-        } else {
-            ESP_LOGE(TAG, "HTTP Request Failed");
-        }
+//         if (err == ESP_OK) {
+//             ESP_LOGE(TAG, "HTTP Success");
+//         } else {
+//             ESP_LOGE(TAG, "HTTP Request Failed");
+//         }
         
-        vTaskDelay(3000 / portTICK_PERIOD_MS); // Fetch every 10 seconds
-    }
+//         vTaskDelay(3000 / portTICK_PERIOD_MS); // Fetch every 10 seconds
+//     }
     
-    esp_http_client_cleanup(client);
-}
+//     esp_http_client_cleanup(client);
+// }
 
 extern void screen_init(void);
 
@@ -436,22 +454,42 @@ void app_main() {
     ESP_LOGI("..", "Done with WPS");
     screen_init();
     ui_init();
-    
-    TaskParams *params = (TaskParams *)malloc(sizeof(TaskParams)); 
-    if (params == NULL) {
-        printf("Memory allocation failed.\n");
-        return;
-    }
-    params->api_url = blockchainAPI.stats;
-    params->statsFlag = true;
-
-    // TaskParams *params = (TaskParams *)malloc(sizeof(TaskParams));
-    // if (params == NULL) {
-    //     printf("Memory allocation failed.\n");
-    //     return;
-    // }
-    // params->api_url = blockchainAPI.bcperblock;
-    // params->statsFlag = false;
     xTaskCreatePinnedToCore(lvgl_task, "LCD", 8 * 1024, NULL, 3, NULL, 1);
-    xTaskCreate(&btc_api_task, "btc_stats_task", 2*4096, params, 5, NULL);
+
+    while(1){
+        esp_http_client_config_t config = {
+            //.url = blockchainAPI.stats, //"https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest?symbol=BTC&convert=USD" 
+            .method = HTTP_METHOD_GET,
+            .cert_pem = NULL,
+            //.event_handler = clientStatsHandler,
+            //.user_data = blockchainAPI.statsKeys[0]
+        };
+        static int URLSwitch = 1;
+        switch(URLSwitch){
+            case 1:
+                config.url = blockchainAPI.stats;
+                config.event_handler = clientStatsHandler;
+            break;
+            case 2:
+                config.url = blockchainAPI.bcperblock;
+                config.event_handler = perBlockHandler;
+            break;
+            case 3:
+                config.url = blockchainAPI.marketcap;
+                config.event_handler = mcapHandler;
+            break;
+            default:
+                config.url = blockchainAPI.stats;
+                config.event_handler = clientStatsHandler;
+            break;
+        }
+        esp_http_client_handle_t client = esp_http_client_init(&config);
+        esp_http_client_perform(client);
+        esp_http_client_cleanup(client);
+        vTaskDelay(3000 / portTICK_PERIOD_MS);
+        URLSwitch++;
+        if(URLSwitch == 4){
+            URLSwitch = 1;
+        }
+    }
 }
