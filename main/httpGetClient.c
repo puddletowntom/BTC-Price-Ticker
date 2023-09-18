@@ -59,6 +59,7 @@ typedef struct{
     char blockCount[20];
     char blockInterval[20];
     char blockSize[20];
+    char blockRemain[20];
 }BitcoinStats;
 
 BitcoinStats bitcoinStats;
@@ -268,6 +269,36 @@ double extractJsonVal(char *jsonMsg, char *jsonKey){
     return value;
 }
 
+char* format_number(double number) {
+    char buffer[30];
+    char tmpBuf[30]; //tmpBuf is just for a string length.
+    char suffix[2];
+
+    snprintf(tmpBuf, sizeof(tmpBuf), "%.0f", number);
+    int length = strlen(tmpBuf);
+    
+    if (length >= 7 && length < 10) {
+        strcpy(suffix, "m");
+        number /= 1000000;
+    } else if (length >= 10 && length < 13) {
+        strcpy(suffix, "b");
+        number /= 1000000000;
+    } else if (length >= 13) {
+        strcpy(suffix, "t");
+        number /= 1000000000000;
+    } else {
+        suffix[0] = '\0';
+    }
+    snprintf(buffer, sizeof(buffer), "%.0f", number);
+
+    char* result = malloc(strlen(buffer) + strlen(suffix) + 1);
+    strcpy(result, buffer);
+    strcat(result, suffix);
+    
+    return result;
+}
+
+
 #define MAX_RESPONSE_SIZE 4096
 
 // Buffer to accumulate received data
@@ -325,6 +356,7 @@ esp_err_t clientStatsHandler(esp_http_client_event_handle_t evt)
             memset(bitcoinStats.blockCount, 0, sizeof(bitcoinStats.blockCount));
             memset(bitcoinStats.blockInterval, 0, sizeof(bitcoinStats.blockInterval));
             memset(bitcoinStats.blockSize, 0, sizeof(bitcoinStats.blockSize));
+            memset(bitcoinStats.blockRemain, 0, sizeof(bitcoinStats.blockRemain));
 
             snprintf(bitcoinStats.price, sizeof(bitcoinStats.price), "$%.0f", price);
             snprintf(bitcoinStats.hash, sizeof(bitcoinStats.hash), "%.0f EX/h", hashrate);
@@ -337,10 +369,13 @@ esp_err_t clientStatsHandler(esp_http_client_event_handle_t evt)
 
             lv_label_set_text(ui_Label2, bitcoinStats.price);
             lv_label_set_text(ui_Label7, bitcoinStats.supply);
-            lv_label_set_text(ui_Label9, bitcoinStats.fees);
+            lv_label_set_text(ui_Label9, bitcoinStats.hash);
             lv_label_set_text(ui_Label13, bitcoinStats.blockInterval);
-            lv_label_set_text(ui_Label15, bitcoinStats.volume);
-            lv_label_set_text(ui_Label17, bitcoinStats.hash);
+            lv_label_set_text(ui_Label15, bitcoinStats.blockCount);
+            int currentCycle = blockCount/210000;
+            double blockRemain = (210000*(currentCycle+1)) - blockCount;
+            snprintf(bitcoinStats.blockRemain, sizeof(bitcoinStats.blockRemain), "%.0f", blockRemain);
+            lv_label_set_text(ui_Label17, bitcoinStats.blockRemain);
 
            // memset(dispTxt, 0, sizeof(dispTxt));
            // sprintf(dispTxt, "$%.0f", price);
@@ -360,7 +395,7 @@ esp_err_t perBlockHandler(esp_http_client_event_handle_t evt)
     case HTTP_EVENT_ON_DATA:
         printf("perBlockHandler: %.*s\n", evt->data_len, (char *)evt->data);
         memset(btcPerBlock, 0, sizeof(btcPerBlock));
-        snprintf(btcPerBlock, sizeof(btcPerBlock), "%.*s", evt->data_len, (char *)evt->data);
+        snprintf(btcPerBlock, sizeof(btcPerBlock), "%.*s btc", evt->data_len, (char *)evt->data);
         lv_label_set_text(ui_Label11, btcPerBlock);
         break;
 
@@ -377,7 +412,12 @@ esp_err_t mcapHandler(esp_http_client_event_handle_t evt)
     case HTTP_EVENT_ON_DATA:
         printf("mcapHandler: %.*s\n", evt->data_len, (char *)evt->data);
         memset(mcapResult, 0, sizeof(mcapResult));
-        snprintf(mcapResult, sizeof(mcapResult), "%.*s", evt->data_len, (char *)evt->data);
+        double decimal_number = strtod((char *)evt->data, NULL);
+        char* formatted_number = format_number(decimal_number);
+        snprintf(mcapResult, sizeof(mcapResult), "$%.*s", strlen(formatted_number), formatted_number);
+        //snprintf(mcapResult, sizeof(mcapResult), "$%.2f", formatted_number);
+        free(formatted_number);
+       // snprintf(mcapResult, sizeof(mcapResult), "%.*s", evt->data_len, (char *)evt->data);
         lv_label_set_text(ui_Label4, mcapResult);
         break;
 
