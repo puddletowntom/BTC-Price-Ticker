@@ -56,6 +56,7 @@ LV_IMG_DECLARE(ui_img_btc_logo1_png);    // assets\btc_logo1.png
 LV_IMG_DECLARE(ui_img_wifi_logo3_png);    // assets\wifi_logo3.png
 LV_IMG_DECLARE(ui_img_wifi_logo2_png);    // assets\wifi_logo2.png
 
+//LV_FONT_DECLARE(ui_font_Display22);
 LV_FONT_DECLARE(ui_font_Display24);
 LV_FONT_DECLARE(ui_font_Display48);
 LV_FONT_DECLARE(ui_font_MontBig);
