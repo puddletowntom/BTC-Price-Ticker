@@ -298,6 +298,14 @@ char* format_number(double number) {
     return result;
 }
 
+void formatWithCommas(char *output, size_t size) {
+    // Insert commas as thousands separators
+    for (int i = strlen(output) - 3; i > 0; i -= 3) {
+        memmove(output + i + 1, output + i, strlen(output) - i + 1);
+        output[i] = ',';
+    }
+}
+
 
 #define MAX_RESPONSE_SIZE 4096
 
@@ -359,11 +367,19 @@ esp_err_t clientStatsHandler(esp_http_client_event_handle_t evt)
             memset(bitcoinStats.blockRemain, 0, sizeof(bitcoinStats.blockRemain));
 
             snprintf(bitcoinStats.price, sizeof(bitcoinStats.price), "$%.0f", price);
+            formatWithCommas(bitcoinStats.price, sizeof(bitcoinStats.price));
+
             snprintf(bitcoinStats.hash, sizeof(bitcoinStats.hash), "%.0f EX/h", hashrate);
             snprintf(bitcoinStats.fees, sizeof(bitcoinStats.fees), "$%.0f", fees);
-            snprintf(bitcoinStats.supply, sizeof(bitcoinStats.supply), "%d btc", supply);
+
+            snprintf(bitcoinStats.supply, sizeof(bitcoinStats.supply), "%d", supply);
+            formatWithCommas(bitcoinStats.supply, sizeof(bitcoinStats.supply));
+
             snprintf(bitcoinStats.volume, sizeof(bitcoinStats.volume), "$%.0f", volume);
+
             snprintf(bitcoinStats.blockCount, sizeof(bitcoinStats.blockCount), "%.0f", blockCount);
+            formatWithCommas(bitcoinStats.blockCount, sizeof(bitcoinStats.blockCount));
+
             snprintf(bitcoinStats.blockInterval, sizeof(bitcoinStats.blockInterval), "%.1f mins", blockInterval);
             snprintf(bitcoinStats.blockSize, sizeof(bitcoinStats.blockSize), "%.0f", blockSize);
 
@@ -374,7 +390,10 @@ esp_err_t clientStatsHandler(esp_http_client_event_handle_t evt)
             lv_label_set_text(ui_Label15, bitcoinStats.blockCount);
             int currentCycle = blockCount/210000;
             double blockRemain = (210000*(currentCycle+1)) - blockCount;
+
             snprintf(bitcoinStats.blockRemain, sizeof(bitcoinStats.blockRemain), "%.0f", blockRemain);
+            formatWithCommas(bitcoinStats.blockRemain, sizeof(bitcoinStats.blockRemain));
+            
             lv_label_set_text(ui_Label17, bitcoinStats.blockRemain);
 
            // memset(dispTxt, 0, sizeof(dispTxt));
