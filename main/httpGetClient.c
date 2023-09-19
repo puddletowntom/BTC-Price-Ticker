@@ -19,6 +19,7 @@
 #include "esp_wps.h"
 #include "esp_event.h"
 #include <string.h>
+#include "math.h"
 //#define GET_JSON_ITEM(root, key) cJSON_GetObjectItemCaseSensitive(root, key)
 
 // #include "freertos/queue.h"
@@ -306,6 +307,49 @@ void formatWithCommas(char *output, size_t size) {
     }
 }
 
+void hashSuffix(double value){
+    double giga = pow(10, 9);
+    double tera = pow(10, 12);
+    double peta = pow(10, 15);
+    double exa = pow(10, 18);
+    double zetta = pow(10, 21);
+    double yotta = pow(10, 24);
+    double ronna = pow(10, 27);
+    double quetta = pow(10, 30);
+    char suffixVal[15];
+
+    value *= giga; //convert to giga hash
+
+    if(value > giga && value < tera){
+        value /= giga;
+        strcpy(suffixVal, " Giga/h");
+    }else if(value > tera && value < peta){
+        value /= tera;
+        strcpy(suffixVal, " Tera/h");
+    }else if(value > peta && value < exa){
+        value /= peta;
+        strcpy(suffixVal, " Peta/h");
+    }else if(value > exa && value < zetta){
+        value /= exa;
+        strcpy(suffixVal, " Exa/h");
+    }else if(value > zetta && value < yotta){
+        value /= zetta;
+        strcpy(suffixVal, " Zetta/h");
+    }else if(value > yotta && value < ronna){
+        value /= yotta;
+        strcpy(suffixVal, " Yotta/h");
+    }else if(value > ronna && value < quetta){
+        value /= ronna;
+        strcpy(suffixVal, " Ronna/h");
+    }else if(value > quetta){
+        value /= quetta;
+        strcpy(suffixVal, " Quetta/h");
+    }
+
+    snprintf(bitcoinStats.hash, sizeof(bitcoinStats.hash), "%.0f", value);
+    strcat(bitcoinStats.hash, suffixVal);
+    ESP_LOGI("HERE..", "%s", bitcoinStats.hash);
+}
 
 #define MAX_RESPONSE_SIZE 4096
 
@@ -338,7 +382,6 @@ esp_err_t clientStatsHandler(esp_http_client_event_handle_t evt)
             ESP_LOGI("Price", "\n%f", price);
             double hashrate = extractJsonVal(current_message, blockchainAPI.statsKeys[1]);
             ESP_LOGI("Hashrate", "\n%f", hashrate);
-            hashrate = hashrate/1000000000;
             double fees = extractJsonVal(current_message, blockchainAPI.statsKeys[2]);
             if(fees < 0){
                 fees = 0;
@@ -368,8 +411,8 @@ esp_err_t clientStatsHandler(esp_http_client_event_handle_t evt)
 
             snprintf(bitcoinStats.price, sizeof(bitcoinStats.price), "$%.0f", price);
             formatWithCommas(bitcoinStats.price, sizeof(bitcoinStats.price));
-
-            snprintf(bitcoinStats.hash, sizeof(bitcoinStats.hash), "%.0f EX/h", hashrate);
+            hashSuffix(hashrate);
+            //snprintf(bitcoinStats.hash, sizeof(bitcoinStats.hash), "%.0f", hashrate);
             snprintf(bitcoinStats.fees, sizeof(bitcoinStats.fees), "$%.0f", fees);
 
             snprintf(bitcoinStats.supply, sizeof(bitcoinStats.supply), "%d", supply);
