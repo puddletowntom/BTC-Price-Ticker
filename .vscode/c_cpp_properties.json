@@ -4,7 +4,9 @@
             "name": "Win32",
             "includePath": [
                 "${workspaceFolder}/**",
-                "C:/Espressif/frameworks/esp-idf-v5.0.1/**"
+                "C:/Espressif/frameworks/esp-idf-v5.0.1/**",
+                "C:/Espressif/frameworks/esp-idf-v5.0.1/components/newlib/platform_include",
+                "C:/Espressif/frameworks/esp-idf-v5.0.1/components/lwip/include"
             ],
             "defines": [
                 "_DEBUG",
