@@ -48,6 +48,7 @@ static wifi_config_t wps_ap_creds[MAX_WPS_AP_CRED];
 static int s_ap_creds_num = 0;
 static int s_retry_num = 0;
 static const char *TAG = "BTC_PRICE";
+bool connectionFlag = false;
 
 char dispTxt[20];
 
@@ -99,14 +100,19 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
     switch (event_id) {
         case WIFI_EVENT_STA_START:
             ESP_LOGI(TAG, "WIFI_EVENT_STA_START");
+            //lv_obj_set_style_bg_color(ui_Panel10, lv_color_hex(0x424242), LV_PART_MAIN | LV_STATE_DEFAULT);
             break;
         case WIFI_EVENT_STA_CONNECTED:
+            connectionFlag = true;
             ESP_LOGI(TAG, "WIFI_CONNECTED");
-            //lv_obj_clear_flag(ui_Image11, LV_OBJ_FLAG_HIDDEN); //Show the Wi-Fi logo
+                //lv_obj_clear_flag(ui_Image11, LV_OBJ_FLAG_HIDDEN); //Show the Wi-Fi logo
+            //lv_obj_set_style_bg_color(ui_Panel10, lv_color_hex(0x00FF16), LV_PART_MAIN | LV_STATE_DEFAULT);
             break;
         case WIFI_EVENT_STA_DISCONNECTED:
             ESP_LOGI(TAG, "WIFI_EVENT_STA_DISCONNECTED");
-            //lv_obj_add_flag(ui_Image11, LV_OBJ_FLAG_HIDDEN);  //Hide the Wi-Fi logo
+            connectionFlag = false;
+                //lv_obj_add_flag(ui_Image11, LV_OBJ_FLAG_HIDDEN);  //Hide the Wi-Fi logo
+            //lv_obj_set_style_bg_color(ui_Panel10, lv_color_hex(0x424242), LV_PART_MAIN | LV_STATE_DEFAULT);
             if (s_retry_num < MAX_RETRY_ATTEMPTS) {
                 esp_wifi_connect();
                 s_retry_num++;
@@ -177,38 +183,6 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
             break;
     }
 }
-
-// void wifi_connection()
-// {
-//     // 1 - Wi-Fi/LwIP Init Phase
-//     esp_netif_init();                    // TCP/IP initiation 					s1.1
-//     esp_event_loop_create_default();     // event loop 			                s1.2
-//     esp_netif_create_default_wifi_sta(); // WiFi station 	                    s1.3
-//     wifi_init_config_t wifi_initiation = WIFI_INIT_CONFIG_DEFAULT();
-//     esp_wifi_init(&wifi_initiation); // 					                    s1.4
-//     // 2 - Wi-Fi Configuration Phase
-//     esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, wifi_event_handler, NULL);
-//     esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, wifi_event_handler, NULL);
-//     // wifi_config_t wifi_configuration = {
-//     //     .sta = {
-//     //         .ssid = SSID,
-//     //         .password = PASS}};
-
-//     wifi_config_t config;
-//     esp_err_t err = esp_wifi_get_config(WIFI_IF_STA, &config); 
-//     if (err == ESP_OK) {
-//         ESP_LOGI("RONAN: ", "SSID: %s, PW: %s\n", (char*) config.sta.ssid, (char*) config.sta.password);
-//     } else {
-//         ESP_LOGI("RONAN: ", "Couldn't get config: %d\n", (int) err);
-//         //start_wps(); //If you cant get the SSID/Password then run WPS.
-//     }
-
-//     esp_wifi_set_config(ESP_IF_WIFI_STA, &config);
-//     // 3 - Wi-Fi Start Phase
-//     esp_wifi_start();
-//     // 4- Wi-Fi Connect Phase
-//     esp_wifi_connect();
-// }
 
 static void got_ip_event_handler(void* arg, esp_event_base_t event_base,
                              int32_t event_id, void* event_data)
@@ -348,7 +322,7 @@ void hashSuffix(double value){
 
     snprintf(bitcoinStats.hash, sizeof(bitcoinStats.hash), "%.0f", value);
     strcat(bitcoinStats.hash, suffixVal);
-    ESP_LOGI("HERE..", "%s", bitcoinStats.hash);
+    //ESP_LOGI("HERE..", "%s", bitcoinStats.hash);
 }
 
 #define MAX_RESPONSE_SIZE 4096
@@ -481,6 +455,7 @@ esp_err_t mcapHandler(esp_http_client_event_handle_t evt)
         free(formatted_number);
        // snprintf(mcapResult, sizeof(mcapResult), "%.*s", evt->data_len, (char *)evt->data);
         lv_label_set_text(ui_Label4, mcapResult);
+        lv_obj_add_flag(ui_Spinner1, LV_OBJ_FLAG_HIDDEN);
         break;
 
     default:
@@ -489,56 +464,46 @@ esp_err_t mcapHandler(esp_http_client_event_handle_t evt)
     return ESP_OK;
 }
 
-
-// http_header_t headers[] = {
-//     { "Accepts", "application/json" },
-//     { "X-CMC_PRO_API_KEY", "91c1467c-1de3-4cf1-874f-bd82e4685fa1" },
-//     { NULL, NULL }
-// };
-
-// void btc_api_task(void *pvParameters) {
-
-//     TaskParams *params = (TaskParams*)pvParameters;
-
-//     esp_http_client_config_t config = {
-//         .url = params->api_url, //"https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest?symbol=BTC&convert=USD" 
-//         .method = HTTP_METHOD_GET,
-//         .cert_pem = NULL,
-//         //.event_handler = clientStatsHandler,
-//         //.user_data = blockchainAPI.statsKeys[0]
-//     };
-
-//     if(params->statsFlag){
-//         config.event_handler = clientStatsHandler;
-//     }else{
-//         config.event_handler = clientSingleHandler;
-//     }
-    
-//     esp_http_client_handle_t client = esp_http_client_init(&config);
-    
-//     while (1) {
-//         esp_err_t err = esp_http_client_perform(client);
-        
-//         if (err == ESP_OK) {
-//             ESP_LOGE(TAG, "HTTP Success");
-//         } else {
-//             ESP_LOGE(TAG, "HTTP Request Failed");
-//         }
-        
-//         vTaskDelay(3000 / portTICK_PERIOD_MS); // Fetch every 10 seconds
-//     }
-    
-//     esp_http_client_cleanup(client);
-// }
-
 extern void screen_init(void);
 
 void lvgl_task(void *pvParameters) {
     // LVGL initialization, UI setup, and event handling
     // This task should regularly call lv_task_handler() to update the UI.
+    bool currentState = connectionFlag;
     while (1) {
+        if(currentState != connectionFlag){
+            if(connectionFlag){
+                lv_obj_set_style_bg_color(ui_Panel10, lv_color_hex(0x00FF16), LV_PART_MAIN | LV_STATE_DEFAULT);
+            }else{
+                lv_obj_set_style_bg_color(ui_Panel10, lv_color_hex(0x424242), LV_PART_MAIN | LV_STATE_DEFAULT);
+            }
+            currentState = connectionFlag;
+        }
         lv_task_handler();
         vTaskDelay(pdMS_TO_TICKS(10)); // Adjust the delay as needed
+    }
+}
+
+void httpTask(void *arg){
+    for(;;){
+        if(connectionFlag){
+            lv_obj_clear_flag(ui_Spinner1, LV_OBJ_FLAG_HIDDEN);
+            for(int i = 0; i < 3; i++){
+                esp_http_client_config_t config = {
+                    .method = HTTP_METHOD_GET,
+                    .cert_pem = NULL,
+                };
+                if(i == 0){config.url = blockchainAPI.stats; config.event_handler = clientStatsHandler;}
+                if(i == 1){config.url = blockchainAPI.bcperblock; config.event_handler = perBlockHandler;}
+                if(i == 2){config.url = blockchainAPI.marketcap; config.event_handler = mcapHandler;}
+
+                esp_http_client_handle_t client = esp_http_client_init(&config);
+                esp_http_client_perform(client);
+                esp_http_client_cleanup(client);
+            }
+            lv_obj_add_flag(ui_Spinner1, LV_OBJ_FLAG_HIDDEN);
+        }
+        vTaskDelay(60000 / portTICK_PERIOD_MS);
     }
 }
 
@@ -557,41 +522,5 @@ void app_main() {
     screen_init();
     ui_init();
     xTaskCreatePinnedToCore(lvgl_task, "LCD", 8 * 1024, NULL, 3, NULL, 1);
-
-    while(1){
-        esp_http_client_config_t config = {
-            //.url = blockchainAPI.stats, //"https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest?symbol=BTC&convert=USD" 
-            .method = HTTP_METHOD_GET,
-            .cert_pem = NULL,
-            //.event_handler = clientStatsHandler,
-            //.user_data = blockchainAPI.statsKeys[0]
-        };
-        static int URLSwitch = 1;
-        switch(URLSwitch){
-            case 1:
-                config.url = blockchainAPI.stats;
-                config.event_handler = clientStatsHandler;
-            break;
-            case 2:
-                config.url = blockchainAPI.bcperblock;
-                config.event_handler = perBlockHandler;
-            break;
-            case 3:
-                config.url = blockchainAPI.marketcap;
-                config.event_handler = mcapHandler;
-            break;
-            default:
-                config.url = blockchainAPI.stats;
-                config.event_handler = clientStatsHandler;
-            break;
-        }
-        esp_http_client_handle_t client = esp_http_client_init(&config);
-        esp_http_client_perform(client);
-        esp_http_client_cleanup(client);
-        vTaskDelay(3000 / portTICK_PERIOD_MS);
-        URLSwitch++;
-        if(URLSwitch == 4){
-            URLSwitch = 1;
-        }
-    }
+    xTaskCreatePinnedToCore(httpTask, "API", 8*1024, NULL, 5, NULL, 1);
 }

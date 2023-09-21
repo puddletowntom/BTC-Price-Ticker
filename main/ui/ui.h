@@ -17,9 +17,10 @@ extern "C" {
 // SCREEN: ui_Screen1
 void ui_Screen1_screen_init(void);
 extern lv_obj_t * ui_Screen1;
-extern lv_obj_t * ui_Image8;
+extern lv_obj_t * ui_Image3;
+//extern lv_obj_t * ui_Image8;
 extern lv_obj_t * ui_Label1;
-extern lv_obj_t * ui_Image11;
+//extern lv_obj_t * ui_Image11;
 // SCREEN: ui_Screen2
 void ui_Screen2_screen_init(void);
 extern lv_obj_t * ui_Screen2;
@@ -39,6 +40,8 @@ extern lv_obj_t * ui_Label14;
 extern lv_obj_t * ui_Label15;
 extern lv_obj_t * ui_Label16;
 extern lv_obj_t * ui_Label17;
+extern lv_obj_t * ui_S2_Label1;
+extern lv_obj_t * ui_S2_Label2;
 
 extern lv_obj_t * ui_Panel1; 
 extern lv_obj_t * ui_Panel2; 
@@ -48,13 +51,16 @@ extern lv_obj_t * ui_Panel5;
 extern lv_obj_t * ui_Panel6; 
 extern lv_obj_t * ui_Panel7;
 extern lv_obj_t * ui_Panel8;  
+extern lv_obj_t * ui_Panel10;
+extern lv_obj_t * ui_Spinner1;
 
-extern lv_obj_t * ui_Image2;
+//extern lv_obj_t * ui_Image2;
 extern lv_obj_t * ui____initial_actions0;
 
-LV_IMG_DECLARE(ui_img_btc_logo1_png);    // assets\btc_logo1.png
-LV_IMG_DECLARE(ui_img_wifi_logo3_png);    // assets\wifi_logo3.png
-LV_IMG_DECLARE(ui_img_wifi_logo2_png);    // assets\wifi_logo2.png
+//LV_IMG_DECLARE(ui_img_btc_logo1_png);    // assets\btc_logo1.png
+//LV_IMG_DECLARE(ui_img_wifi_logo3_png);    // assets\wifi_logo3.png
+//LV_IMG_DECLARE(ui_img_wifi_logo2_png);    // assets\wifi_logo2.png
+LV_IMG_DECLARE(ui_img_smallwps_png);    // assets\smallWPS.png
 
 //LV_FONT_DECLARE(ui_font_Display22);
 LV_FONT_DECLARE(ui_font_Display24);

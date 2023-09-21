@@ -453,7 +453,7 @@ void screen_init(void) {
         .flags.fb_in_psram = 1,
         .flags.double_fb = 0,
         .flags.refresh_on_demand = 0,   // Mannually control refresh operation
-        .bounce_buffer_size_px = 480*8, //was 0, put 480*8 for dealing with screen shift issue when using NVS
+        //.bounce_buffer_size_px = 480*8, //was 0, put 480*8 for dealing with screen shift issue when using NVS
         .clk_src = LCD_CLK_SRC_PLL160M,
     };
 
