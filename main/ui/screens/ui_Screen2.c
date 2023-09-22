@@ -30,5 +30,4 @@ void ui_Screen2_screen_init(void)
     lv_obj_set_y(ui_S2_Label2, 101);
     lv_obj_set_align(ui_S2_Label2, LV_ALIGN_CENTER);
     lv_label_set_text(ui_S2_Label2, "on your Wi-Fi Router");
-
 }

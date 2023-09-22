@@ -49,6 +49,7 @@ static int s_ap_creds_num = 0;
 static int s_retry_num = 0;
 static const char *TAG = "BTC_PRICE";
 bool connectionFlag = false;
+bool starting = true;
 
 char dispTxt[20];
 
@@ -456,6 +457,7 @@ esp_err_t mcapHandler(esp_http_client_event_handle_t evt)
        // snprintf(mcapResult, sizeof(mcapResult), "%.*s", evt->data_len, (char *)evt->data);
         lv_label_set_text(ui_Label4, mcapResult);
         lv_obj_add_flag(ui_Spinner1, LV_OBJ_FLAG_HIDDEN);
+        starting = false;
         break;
 
     default:
@@ -485,6 +487,7 @@ void lvgl_task(void *pvParameters) {
 }
 
 void httpTask(void *arg){
+    static bool beginMainSreen = true;
     for(;;){
         if(connectionFlag){
             lv_obj_clear_flag(ui_Spinner1, LV_OBJ_FLAG_HIDDEN);
@@ -503,7 +506,21 @@ void httpTask(void *arg){
             }
             lv_obj_add_flag(ui_Spinner1, LV_OBJ_FLAG_HIDDEN);
         }
-        vTaskDelay(60000 / portTICK_PERIOD_MS);
+        if(beginMainSreen == true && starting == false){
+            lv_disp_load_scr(ui_Screen1);
+            beginMainSreen = false;
+        }
+        if(starting){
+            static int attempts = 0;
+            attempts++;
+            if(attempts >= 15){
+                lv_disp_load_scr(ui_Screen1);
+            }
+            starting = false;
+            vTaskDelay(3000 / portTICK_PERIOD_MS);
+        }else{
+            vTaskDelay(60000 / portTICK_PERIOD_MS);
+        }
     }
 }
 
