@@ -43,13 +43,15 @@
 #define PINSTR "%c%c%c%c%c%c%c%c"
 #endif
 
+//#define CONFIG_RESTORE //Change to 1 only when clearing the NVS for factory defaults
+
 static esp_wps_config_t config = WPS_CONFIG_INIT_DEFAULT(WPS_MODE);
 static wifi_config_t wps_ap_creds[MAX_WPS_AP_CRED];
 static int s_ap_creds_num = 0;
 static int s_retry_num = 0;
 static const char *TAG = "BTC_PRICE";
 bool connectionFlag = false;
-bool starting = true;
+bool fetchingAPI = true;
 
 char dispTxt[20];
 
@@ -192,9 +194,19 @@ static void got_ip_event_handler(void* arg, esp_event_base_t event_base,
     ESP_LOGI(TAG, "got ip: " IPSTR, IP2STR(&event->ip_info.ip));
 }
 
-/*init wifi as sta and start wps*/
-static void start_wps(void)
-{
+bool isConfigured(uint8_t credArray[], int arraySize){
+    bool hasValue = false; // Initialize a boolean variable
+
+    for (int i = 0; i < arraySize; i++) {
+        if (credArray[i] != 0) {
+            hasValue = true; // There is a non-zero element, so the SSID is not empty
+            break; // No need to check further, exit the loop
+        }
+    }
+    return hasValue;
+}
+
+static void wifiSetup(){
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     esp_netif_t *sta_netif = esp_netif_create_default_wifi_sta();
@@ -206,27 +218,60 @@ static void start_wps(void)
     ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL));
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &got_ip_event_handler, NULL));
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+    ESP_ERROR_CHECK(esp_wifi_start());
+
+    wifi_config_t wifi_config;
+    esp_wifi_get_config(WIFI_IF_STA, &wifi_config); 
+
+    bool ssidVal = false;
+    bool passwordVal = false;
+    ssidVal = isConfigured(wifi_config.sta.ssid, sizeof(wifi_config.sta.ssid));
+    passwordVal = isConfigured(wifi_config.sta.password, sizeof(wifi_config.sta.password));
+
+    if(ssidVal == true && passwordVal == true){
+        ESP_ERROR_CHECK(esp_wifi_connect());
+    }
+}
+
+static void start_wps(){
+    ESP_LOGI(TAG, "start wps...");
+    ESP_ERROR_CHECK(esp_wifi_wps_enable(&config));
+    ESP_ERROR_CHECK(esp_wifi_wps_start(0));
 
     wifi_config_t wifi_config;
     esp_err_t err = esp_wifi_get_config(WIFI_IF_STA, &wifi_config); 
     if (err == ESP_OK) {
         ESP_LOGI("RONAN: ", "SSID: %s, PW: %s\n", (char*) wifi_config.sta.ssid, (char*) wifi_config.sta.password);
-        esp_wifi_set_config(ESP_IF_WIFI_STA, &wifi_config);
-        esp_err_t errStart = esp_wifi_start();
-        esp_err_t errConnect = esp_wifi_connect(); 
-
-        if(errStart != ESP_OK || errConnect != ESP_OK){
-            ESP_LOGI(TAG, "start wps...");
-            ESP_ERROR_CHECK(esp_wifi_wps_enable(&config));
-            ESP_ERROR_CHECK(esp_wifi_wps_start(0)); 
-        }
     } else {
         ESP_LOGI("RONAN: ", "Couldn't get config: %d\n", (int) err);
-        ESP_LOGI(TAG, "start wps...");
-        ESP_ERROR_CHECK(esp_wifi_wps_enable(&config));
-        ESP_ERROR_CHECK(esp_wifi_wps_start(0)); 
     }
 }
+
+/*init wifi as sta and start wps*/
+// static void start_wps(void)
+// {
+//     wifi_config_t wifi_config;
+//     esp_err_t err = esp_wifi_get_config(WIFI_IF_STA, &wifi_config); 
+//     if (err == ESP_OK) {
+//         ESP_LOGI("RONAN: ", "SSID: %s, PW: %s\n", (char*) wifi_config.sta.ssid, (char*) wifi_config.sta.password);
+//         esp_wifi_set_config(ESP_IF_WIFI_STA, &wifi_config);
+//         esp_err_t errStart = esp_wifi_start();
+//         esp_err_t errConnect = esp_wifi_connect(); 
+
+//         if(errStart != ESP_OK || errConnect != ESP_OK){
+//             ESP_LOGI(TAG, "yea start wps...");
+//             lv_disp_load_scr(ui_Screen2);
+//             ESP_ERROR_CHECK(esp_wifi_wps_enable(&config));
+//             ESP_ERROR_CHECK(esp_wifi_wps_start(0)); 
+//         }
+//     } else {
+//         //lv_disp_load_scr(ui_Screen2); //No configuration then use WPS screen
+//         ESP_LOGI("RONAN: ", "Couldn't get config: %d\n", (int) err);
+//         ESP_LOGI(TAG, "start wps...");
+//         ESP_ERROR_CHECK(esp_wifi_wps_enable(&config));
+//         ESP_ERROR_CHECK(esp_wifi_wps_start(0)); 
+//     }
+// }
 
 double extractJsonVal(char *jsonMsg, char *jsonKey){
     cJSON *root = cJSON_Parse(jsonMsg);
@@ -457,7 +502,7 @@ esp_err_t mcapHandler(esp_http_client_event_handle_t evt)
        // snprintf(mcapResult, sizeof(mcapResult), "%.*s", evt->data_len, (char *)evt->data);
         lv_label_set_text(ui_Label4, mcapResult);
         lv_obj_add_flag(ui_Spinner1, LV_OBJ_FLAG_HIDDEN);
-        starting = false;
+        fetchingAPI = false;
         break;
 
     default:
@@ -471,23 +516,17 @@ extern void screen_init(void);
 void lvgl_task(void *pvParameters) {
     // LVGL initialization, UI setup, and event handling
     // This task should regularly call lv_task_handler() to update the UI.
-    bool currentState = connectionFlag;
     while (1) {
-        if(currentState != connectionFlag){
-            if(connectionFlag){
-                lv_obj_set_style_bg_color(ui_Panel10, lv_color_hex(0x00FF16), LV_PART_MAIN | LV_STATE_DEFAULT);
-            }else{
-                lv_obj_set_style_bg_color(ui_Panel10, lv_color_hex(0x424242), LV_PART_MAIN | LV_STATE_DEFAULT);
-            }
-            currentState = connectionFlag;
-        }
         lv_task_handler();
         vTaskDelay(pdMS_TO_TICKS(10)); // Adjust the delay as needed
     }
 }
 
 void httpTask(void *arg){
+    //bool *wifiConfig = (bool *)arg;
+    //bool isWifiConfig = *wifiConfig;
     static bool beginMainSreen = true;
+    bool currentState = connectionFlag;
     for(;;){
         if(connectionFlag){
             lv_obj_clear_flag(ui_Spinner1, LV_OBJ_FLAG_HIDDEN);
@@ -506,17 +545,27 @@ void httpTask(void *arg){
             }
             lv_obj_add_flag(ui_Spinner1, LV_OBJ_FLAG_HIDDEN);
         }
-        if(beginMainSreen == true && starting == false){
+
+        if(currentState != connectionFlag){
+            if(connectionFlag){
+                lv_obj_set_style_bg_color(ui_Panel10, lv_color_hex(0x00FF16), LV_PART_MAIN | LV_STATE_DEFAULT);
+            }else{
+                lv_obj_set_style_bg_color(ui_Panel10, lv_color_hex(0x424242), LV_PART_MAIN | LV_STATE_DEFAULT);
+            }
+            currentState = connectionFlag;
+        }
+
+        if(beginMainSreen == true && fetchingAPI == false){
             lv_disp_load_scr(ui_Screen1);
             beginMainSreen = false;
         }
-        if(starting){
+        if(fetchingAPI){
             static int attempts = 0;
             attempts++;
             if(attempts >= 15){
                 lv_disp_load_scr(ui_Screen1);
             }
-            starting = false;
+            fetchingAPI = false;
             vTaskDelay(3000 / portTICK_PERIOD_MS);
         }else{
             vTaskDelay(60000 / portTICK_PERIOD_MS);
@@ -524,20 +573,44 @@ void httpTask(void *arg){
     }
 }
 
-void app_main() {
-    /* Initialize NVS — it is used to store PHY calibration data */
+// void forgetWifiNetwork() {
+//     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+//     esp_wifi_init(&cfg);
+//     esp_wifi_disconnect();
+//     esp_wifi_deinit();
+// }
+
+
+void app_main(void) {
+    ESP_LOGI("pp", "Starting");
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK(nvs_flash_erase());
         ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK( ret );
-    ESP_LOGI("pp", "Got passed here");
-    //wifi_connection();
-    start_wps();
-    ESP_LOGI("..", "Done with WPS");
+
     screen_init();
     ui_init();
     xTaskCreatePinnedToCore(lvgl_task, "LCD", 8 * 1024, NULL, 3, NULL, 1);
-    xTaskCreatePinnedToCore(httpTask, "API", 8*1024, NULL, 5, NULL, 1);
+
+    ESP_LOGI("pp", "Got passed here");
+    wifiSetup();
+    #ifdef CONFIG_RESTORE
+        ESP_LOGI("..", "RESETING NVS");
+        ESP_ERROR_CHECK(esp_wifi_restore()); //Use this to clear Wi-Fi configuration (stored as NVS) esp_wifi_init needs to happen before.
+    #else
+        // ESP_LOGI("CHECKING", "Checking connection...");
+        // if(!connectionFlag){
+        //     ESP_LOGI("WPS:", "Trying...");
+        //     start_wps();  
+        // }
+        // while(!connectionFlag){
+        //     vTaskDelay(100 / portTICK_PERIOD_MS);
+        // } //Wait for connection before moving on to next screen
+
+        ESP_LOGI("..", "Ready for API");
+        lv_disp_load_scr(ui_Screen3);
+        xTaskCreatePinnedToCore(httpTask, "API", 8*1024, NULL, 5, NULL, 1);
+    #endif
 }

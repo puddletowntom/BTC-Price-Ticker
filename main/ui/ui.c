@@ -80,6 +80,5 @@ void ui_init(void)
     ui_Screen2_screen_init();
     ui_Screen3_screen_init();
     ui____initial_actions0 = lv_obj_create(NULL);
-    lv_disp_load_scr(ui_Screen3);
-    
+    //lv_disp_load_scr(ui_Screen3);
 }
