@@ -20,12 +20,6 @@
 #include "esp_event.h"
 #include <string.h>
 #include "math.h"
-//#define GET_JSON_ITEM(root, key) cJSON_GetObjectItemCaseSensitive(root, key)
-
-// #include "freertos/queue.h"
-// #include "rom/gpio.h"
-// #include "driver/gpio.h"
-// #include "esp_timer.h"
 
 /*set wps mode via project configuration */
 #if CONFIG_EXAMPLE_WPS_TYPE_PBC
@@ -219,17 +213,18 @@ static void wifiSetup(){
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &got_ip_event_handler, NULL));
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_start());
+}
 
-    wifi_config_t wifi_config;
-    esp_wifi_get_config(WIFI_IF_STA, &wifi_config); 
-
-    bool ssidVal = false;
-    bool passwordVal = false;
-    ssidVal = isConfigured(wifi_config.sta.ssid, sizeof(wifi_config.sta.ssid));
-    passwordVal = isConfigured(wifi_config.sta.password, sizeof(wifi_config.sta.password));
-
-    if(ssidVal == true && passwordVal == true){
-        ESP_ERROR_CHECK(esp_wifi_connect());
+void waitWPS(){
+    ESP_LOGI("..", "waiting for WPS");
+    int64_t start_time = esp_timer_get_time();
+    int64_t loop_duration = 10 * 1000000;  // 10 seconds in microseconds
+    while (1) {
+        int64_t current_time = esp_timer_get_time();
+        if ((current_time - start_time) >= loop_duration) {
+            break;  // Exit the while loop after 10 seconds
+        }
+        vTaskDelay(100 / portTICK_PERIOD_MS);
     }
 }
 
@@ -237,41 +232,18 @@ static void start_wps(){
     ESP_LOGI(TAG, "start wps...");
     ESP_ERROR_CHECK(esp_wifi_wps_enable(&config));
     ESP_ERROR_CHECK(esp_wifi_wps_start(0));
+    waitWPS();
+    esp_wifi_wps_disable();
 
     wifi_config_t wifi_config;
     esp_err_t err = esp_wifi_get_config(WIFI_IF_STA, &wifi_config); 
     if (err == ESP_OK) {
         ESP_LOGI("RONAN: ", "SSID: %s, PW: %s\n", (char*) wifi_config.sta.ssid, (char*) wifi_config.sta.password);
+        ESP_ERROR_CHECK(esp_wifi_connect());
     } else {
         ESP_LOGI("RONAN: ", "Couldn't get config: %d\n", (int) err);
     }
 }
-
-/*init wifi as sta and start wps*/
-// static void start_wps(void)
-// {
-//     wifi_config_t wifi_config;
-//     esp_err_t err = esp_wifi_get_config(WIFI_IF_STA, &wifi_config); 
-//     if (err == ESP_OK) {
-//         ESP_LOGI("RONAN: ", "SSID: %s, PW: %s\n", (char*) wifi_config.sta.ssid, (char*) wifi_config.sta.password);
-//         esp_wifi_set_config(ESP_IF_WIFI_STA, &wifi_config);
-//         esp_err_t errStart = esp_wifi_start();
-//         esp_err_t errConnect = esp_wifi_connect(); 
-
-//         if(errStart != ESP_OK || errConnect != ESP_OK){
-//             ESP_LOGI(TAG, "yea start wps...");
-//             lv_disp_load_scr(ui_Screen2);
-//             ESP_ERROR_CHECK(esp_wifi_wps_enable(&config));
-//             ESP_ERROR_CHECK(esp_wifi_wps_start(0)); 
-//         }
-//     } else {
-//         //lv_disp_load_scr(ui_Screen2); //No configuration then use WPS screen
-//         ESP_LOGI("RONAN: ", "Couldn't get config: %d\n", (int) err);
-//         ESP_LOGI(TAG, "start wps...");
-//         ESP_ERROR_CHECK(esp_wifi_wps_enable(&config));
-//         ESP_ERROR_CHECK(esp_wifi_wps_start(0)); 
-//     }
-// }
 
 double extractJsonVal(char *jsonMsg, char *jsonKey){
     cJSON *root = cJSON_Parse(jsonMsg);
@@ -573,14 +545,6 @@ void httpTask(void *arg){
     }
 }
 
-// void forgetWifiNetwork() {
-//     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-//     esp_wifi_init(&cfg);
-//     esp_wifi_disconnect();
-//     esp_wifi_deinit();
-// }
-
-
 void app_main(void) {
     ESP_LOGI("pp", "Starting");
     esp_err_t ret = nvs_flash_init();
@@ -589,28 +553,19 @@ void app_main(void) {
         ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK( ret );
-
     screen_init();
     ui_init();
     xTaskCreatePinnedToCore(lvgl_task, "LCD", 8 * 1024, NULL, 3, NULL, 1);
-
+    lv_disp_load_scr(ui_Screen3);
     ESP_LOGI("pp", "Got passed here");
     wifiSetup();
     #ifdef CONFIG_RESTORE
         ESP_LOGI("..", "RESETING NVS");
         ESP_ERROR_CHECK(esp_wifi_restore()); //Use this to clear Wi-Fi configuration (stored as NVS) esp_wifi_init needs to happen before.
     #else
-        // ESP_LOGI("CHECKING", "Checking connection...");
-        // if(!connectionFlag){
-        //     ESP_LOGI("WPS:", "Trying...");
-        //     start_wps();  
-        // }
-        // while(!connectionFlag){
-        //     vTaskDelay(100 / portTICK_PERIOD_MS);
-        // } //Wait for connection before moving on to next screen
-
+        start_wps();  
         ESP_LOGI("..", "Ready for API");
-        lv_disp_load_scr(ui_Screen3);
+        
         xTaskCreatePinnedToCore(httpTask, "API", 8*1024, NULL, 5, NULL, 1);
     #endif
 }
