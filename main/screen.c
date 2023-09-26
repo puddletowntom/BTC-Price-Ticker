@@ -55,7 +55,9 @@ void qmsd_rgb_init(esp_lcd_rgb_panel_config_t *panel_config)
     ESP_ERROR_CHECK(esp_lcd_panel_init(g_panel_handle));
 
     buffer_size = 480 * 40;
-	buf1 = heap_caps_malloc(buffer_size * 2, MALLOC_CAP_DMA);
+	buf1 = heap_caps_malloc(buffer_size*2, MALLOC_CAP_DMA);
+	//buf2 = heap_caps_malloc(buffer_size*2, MALLOC_CAP_DMA);
+
     lv_disp_draw_buf_init(&draw_buf, buf1, buf2, buffer_size);
 
     lv_disp_drv_init(&disp_drv);         

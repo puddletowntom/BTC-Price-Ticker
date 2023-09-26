@@ -46,6 +46,7 @@ static int s_retry_num = 0;
 static const char *TAG = "BTC_PRICE";
 bool connectionFlag = false;
 bool fetchingAPI = true;
+bool wpsComplete = false;
 
 char dispTxt[20];
 
@@ -59,11 +60,12 @@ typedef struct{
     char blockInterval[20];
     char blockSize[20];
     char blockRemain[20];
-}BitcoinStats;
+}bitcoin_stats_t;
 
-BitcoinStats bitcoinStats;
+bitcoin_stats_t bitcoinStats;
 char mcapResult[20];
 char btcPerBlock[20];
+char tickerVal[20];
 
 bool toggle = false;
 
@@ -76,40 +78,41 @@ typedef struct{
     char *transactionCount;
     char *btcTicker;
     char statsKeys[8][50];
-}BlockchainAPI;
+}blockchain_api_t;
 
-BlockchainAPI blockchainAPI = {
+blockchain_api_t blockchainAPI = {
     .stats = "https://api.blockchain.info/stats",
     .bcperblock = "https://blockchain.info/q/bcperblock",
     .avgtxnumber = "https://blockchain.info/q/avgtxnumber",
     .marketcap = "https://blockchain.info/q/marketcap",
     .hrbtcsent = "https://blockchain.info/q/24hrbtcsent",
     .transactionCount = "https://blockchain.info/q/24hrtransactioncount",
-    .btcTicker = "https://api.blockchain.com/v3/exchange/tickers/BTC-USD",
+    .btcTicker = "https://blockchain.info/ticker",
     {"market_price_usd", "hash_rate", "total_fees_btc", "totalbc", "trade_volume_usd", "n_blocks_total", "minutes_between_blocks", "blocks_size"},
 };
 
+typedef enum {
+    WPS_NO_CREDENTIALS_FOUND = 0,
+    WPS_CREDENTIALS_FOUND,
+    WPS_CONFIG_ERROR,
+}wps_status_t;
+
 static void wifi_event_handler(void* arg, esp_event_base_t event_base,
                                 int32_t event_id, void* event_data)
-{
+    {
     static int ap_idx = 1;
 
     switch (event_id) {
         case WIFI_EVENT_STA_START:
             ESP_LOGI(TAG, "WIFI_EVENT_STA_START");
-            //lv_obj_set_style_bg_color(ui_Panel10, lv_color_hex(0x424242), LV_PART_MAIN | LV_STATE_DEFAULT);
             break;
-        case WIFI_EVENT_STA_CONNECTED:
-            connectionFlag = true;
-            ESP_LOGI(TAG, "WIFI_CONNECTED");
-                //lv_obj_clear_flag(ui_Image11, LV_OBJ_FLAG_HIDDEN); //Show the Wi-Fi logo
-            //lv_obj_set_style_bg_color(ui_Panel10, lv_color_hex(0x00FF16), LV_PART_MAIN | LV_STATE_DEFAULT);
-            break;
+        // case WIFI_EVENT_STA_CONNECTED:  
+        //     //ESP_LOGI(TAG, "WIFI_EVENT_STA_CONNECTED");
+        //     connectionFlag = true;
+        //     break;
         case WIFI_EVENT_STA_DISCONNECTED:
-            ESP_LOGI(TAG, "WIFI_EVENT_STA_DISCONNECTED");
             connectionFlag = false;
-                //lv_obj_add_flag(ui_Image11, LV_OBJ_FLAG_HIDDEN);  //Hide the Wi-Fi logo
-            //lv_obj_set_style_bg_color(ui_Panel10, lv_color_hex(0x424242), LV_PART_MAIN | LV_STATE_DEFAULT);
+            ESP_LOGI(TAG, "WIFI_EVENT_STA_DISCONNECTED");
             if (s_retry_num < MAX_RETRY_ATTEMPTS) {
                 esp_wifi_connect();
                 s_retry_num++;
@@ -186,6 +189,8 @@ static void got_ip_event_handler(void* arg, esp_event_base_t event_base,
 {
     ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
     ESP_LOGI(TAG, "got ip: " IPSTR, IP2STR(&event->ip_info.ip));
+    wpsComplete = true;
+    connectionFlag = true;
 }
 
 bool isConfigured(uint8_t credArray[], int arraySize){
@@ -228,21 +233,37 @@ void waitWPS(){
     }
 }
 
-static void start_wps(){
+static int start_wps(){
     ESP_LOGI(TAG, "start wps...");
     ESP_ERROR_CHECK(esp_wifi_wps_enable(&config));
     ESP_ERROR_CHECK(esp_wifi_wps_start(0));
-    waitWPS();
-    esp_wifi_wps_disable();
-
     wifi_config_t wifi_config;
     esp_err_t err = esp_wifi_get_config(WIFI_IF_STA, &wifi_config); 
-    if (err == ESP_OK) {
+
+    if(err == ESP_OK){
         ESP_LOGI("RONAN: ", "SSID: %s, PW: %s\n", (char*) wifi_config.sta.ssid, (char*) wifi_config.sta.password);
-        ESP_ERROR_CHECK(esp_wifi_connect());
-    } else {
+        if(strlen((char *)wifi_config.sta.ssid) > 0 && strlen((char *)wifi_config.sta.password) > 0){
+            waitWPS();
+            esp_wifi_wps_disable();
+            ESP_LOGI("..", "Trying to connect to wifi");
+            ESP_ERROR_CHECK(esp_wifi_connect());
+            ESP_LOGI("..", "After connection");
+            return WPS_CREDENTIALS_FOUND;
+        }else { //No credentials, then ask user for WPS
+            lv_disp_load_scr(ui_Screen2);
+            while(!wpsComplete){
+                vTaskDelay(100 / portTICK_PERIOD_MS);
+            }
+
+            //lv_disp_load_scr(ui_Screen3);
+            //ESP_ERROR_CHECK(esp_wifi_connect());
+            return WPS_CREDENTIALS_FOUND;
+        }
+    }else{
         ESP_LOGI("RONAN: ", "Couldn't get config: %d\n", (int) err);
+        return WPS_CONFIG_ERROR;
     }
+    return WPS_CONFIG_ERROR;
 }
 
 double extractJsonVal(char *jsonMsg, char *jsonKey){
@@ -260,6 +281,24 @@ double extractJsonVal(char *jsonMsg, char *jsonKey){
     }
     cJSON_Delete(root);
     return value;
+}
+
+double extractJsonTicker(char *jsonMsg, char *jsonKey){
+    cJSON *root = cJSON_Parse(jsonMsg);
+    if (root == NULL) {
+        printf("Error parsing JSON: %s\n", cJSON_GetErrorPtr());
+    }
+    cJSON *USD = cJSON_GetObjectItemCaseSensitive(root, jsonKey);
+    double USD_last = cJSON_GetObjectItemCaseSensitive(USD, "last")->valuedouble;
+    // if (cJSON_IsNumber(jsonValue)) {
+    //     value = jsonValue->valuedouble;
+    //     printf("The value is %f\n", value);
+    // } else {
+    //     printf("Error getting message\n");
+    // }
+    ESP_LOGI("Ticker: ", "%.2f", USD_last);
+    cJSON_Delete(root);
+    return USD_last;
 }
 
 char* format_number(double number) {
@@ -293,7 +332,7 @@ char* format_number(double number) {
 
 void formatWithCommas(char *output, size_t size) {
     // Insert commas as thousands separators
-    for (int i = strlen(output) - 3; i > 0; i -= 3) {
+    for (int i = strlen(output) - 3; i > 0; i -= 3){
         memmove(output + i + 1, output + i, strlen(output) - i + 1);
         output[i] = ',';
     }
@@ -315,7 +354,7 @@ void hashSuffix(double value){
     if(value > giga && value < tera){
         value /= giga;
         strcpy(suffixVal, " Giga/h");
-    }else if(value > tera && value < peta){
+    }else if(value > tera && value < peta){ 
         value /= tera;
         strcpy(suffixVal, " Tera/h");
     }else if(value > peta && value < exa){
@@ -344,20 +383,20 @@ void hashSuffix(double value){
 }
 
 #define MAX_RESPONSE_SIZE 4096
-
 // Buffer to accumulate received data
-char responseBuffer[MAX_RESPONSE_SIZE];
+char responseBuffer[MAX_RESPONSE_SIZE]; //Using global variables for this because limited stack memory is causing issues having them local in handler function.
 size_t responseLength = 0;
 
-esp_err_t clientStatsHandler(esp_http_client_event_handle_t evt)
-{
+esp_err_t clientStatsHandler(esp_http_client_event_handle_t evt){
+
+
     switch (evt->event_id) {
         case HTTP_EVENT_ON_DATA:
             // Copy received data to the buffer
             if (responseLength + evt->data_len <= MAX_RESPONSE_SIZE) {
                 memcpy(responseBuffer + responseLength, evt->data, evt->data_len);
                 responseLength += evt->data_len;
-            } else {
+            } else{
                 printf("Received data exceeds buffer size\n");
             }
             break;
@@ -370,8 +409,8 @@ esp_err_t clientStatsHandler(esp_http_client_event_handle_t evt)
             char *current_message = strtok(responseBuffer, "}");
             strcat(current_message, "}");
             printf("Received data: %s\n", current_message);
-            double price = extractJsonVal(current_message, blockchainAPI.statsKeys[0]);
-            ESP_LOGI("Price", "\n%f", price);
+           // double price = extractJsonVal(current_message, blockchainAPI.statsKeys[0]);
+           // ESP_LOGI("Price", "\n%f", price);
             double hashrate = extractJsonVal(current_message, blockchainAPI.statsKeys[1]);
             ESP_LOGI("Hashrate", "\n%f", hashrate);
             double fees = extractJsonVal(current_message, blockchainAPI.statsKeys[2]);
@@ -391,7 +430,10 @@ esp_err_t clientStatsHandler(esp_http_client_event_handle_t evt)
             double blockSize = extractJsonVal(current_message, blockchainAPI.statsKeys[7]);
             ESP_LOGI("BlockSize", "\n%f", blockSize);
 
-            memset(bitcoinStats.price, 0, sizeof(bitcoinStats.price));
+            memset(responseBuffer, 0, sizeof(responseBuffer));
+            responseLength = 0;
+
+           // memset(bitcoinStats.price, 0, sizeof(bitcoinStats.price));
             memset(bitcoinStats.hash, 0, sizeof(bitcoinStats.hash));
             memset(bitcoinStats.fees, 0, sizeof(bitcoinStats.fees));
             memset(bitcoinStats.supply, 0, sizeof(bitcoinStats.supply));
@@ -401,8 +443,8 @@ esp_err_t clientStatsHandler(esp_http_client_event_handle_t evt)
             memset(bitcoinStats.blockSize, 0, sizeof(bitcoinStats.blockSize));
             memset(bitcoinStats.blockRemain, 0, sizeof(bitcoinStats.blockRemain));
 
-            snprintf(bitcoinStats.price, sizeof(bitcoinStats.price), "$%.0f", price);
-            formatWithCommas(bitcoinStats.price, sizeof(bitcoinStats.price));
+            //snprintf(bitcoinStats.price, sizeof(bitcoinStats.price), "$%.0f", price);
+            //formatWithCommas(bitcoinStats.price, sizeof(bitcoinStats.price));
             hashSuffix(hashrate);
             //snprintf(bitcoinStats.hash, sizeof(bitcoinStats.hash), "%.0f", hashrate);
             snprintf(bitcoinStats.fees, sizeof(bitcoinStats.fees), "$%.0f", fees);
@@ -418,7 +460,7 @@ esp_err_t clientStatsHandler(esp_http_client_event_handle_t evt)
             snprintf(bitcoinStats.blockInterval, sizeof(bitcoinStats.blockInterval), "%.1f mins", blockInterval);
             snprintf(bitcoinStats.blockSize, sizeof(bitcoinStats.blockSize), "%.0f", blockSize);
 
-            lv_label_set_text(ui_Label2, bitcoinStats.price);
+            //lv_label_set_text(ui_Label2, bitcoinStats.price);
             lv_label_set_text(ui_Label7, bitcoinStats.supply);
             lv_label_set_text(ui_Label9, bitcoinStats.hash);
             lv_label_set_text(ui_Label13, bitcoinStats.blockInterval);
@@ -430,10 +472,6 @@ esp_err_t clientStatsHandler(esp_http_client_event_handle_t evt)
             formatWithCommas(bitcoinStats.blockRemain, sizeof(bitcoinStats.blockRemain));
             
             lv_label_set_text(ui_Label17, bitcoinStats.blockRemain);
-
-           // memset(dispTxt, 0, sizeof(dispTxt));
-           // sprintf(dispTxt, "$%.0f", price);
-            // Process the JSON data or perform other operations here
             break;
 
         default:
@@ -442,8 +480,7 @@ esp_err_t clientStatsHandler(esp_http_client_event_handle_t evt)
     return ESP_OK;
 }
 
-esp_err_t perBlockHandler(esp_http_client_event_handle_t evt)
-{
+esp_err_t perBlockHandler(esp_http_client_event_handle_t evt){
     switch (evt->event_id)
     {
     case HTTP_EVENT_ON_DATA:
@@ -459,8 +496,7 @@ esp_err_t perBlockHandler(esp_http_client_event_handle_t evt)
     return ESP_OK;
 }
 
-esp_err_t mcapHandler(esp_http_client_event_handle_t evt)
-{
+esp_err_t mcapHandler(esp_http_client_event_handle_t evt){
     switch (evt->event_id)
     {
     case HTTP_EVENT_ON_DATA:
@@ -469,15 +505,48 @@ esp_err_t mcapHandler(esp_http_client_event_handle_t evt)
         double decimal_number = strtod((char *)evt->data, NULL);
         char* formatted_number = format_number(decimal_number);
         snprintf(mcapResult, sizeof(mcapResult), "$%.*s", strlen(formatted_number), formatted_number);
-        //snprintf(mcapResult, sizeof(mcapResult), "$%.2f", formatted_number);
         free(formatted_number);
-       // snprintf(mcapResult, sizeof(mcapResult), "%.*s", evt->data_len, (char *)evt->data);
         lv_label_set_text(ui_Label4, mcapResult);
         lv_obj_add_flag(ui_Spinner1, LV_OBJ_FLAG_HIDDEN);
         fetchingAPI = false;
         break;
 
     default:
+        break;
+    }
+    return ESP_OK;
+}
+
+char tickerBuffer[MAX_RESPONSE_SIZE]; //Using global variables for this because limited stack memory is causing issues having them local in handler function.
+size_t tickerLength = 0;
+
+esp_err_t clientTickerHandler(esp_http_client_event_handle_t evt){
+        // Buffer to accumulate received data
+    switch (evt->event_id) {
+        case HTTP_EVENT_ON_DATA:
+            // Copy received data to the buffer
+            if (tickerLength + evt->data_len <= MAX_RESPONSE_SIZE) {
+                memcpy(tickerBuffer + tickerLength, evt->data, evt->data_len);
+                tickerLength += evt->data_len;
+            } else{
+                printf("Received data exceeds buffer size\n");
+            }
+            break;
+        case HTTP_EVENT_ON_FINISH:
+            // Process the complete accumulated data
+            tickerBuffer[tickerLength] = '\0'; // Null-terminate the data
+            // char *current_message = strtok(tickerBuffer, "}");
+            // strcat(current_message, "}");
+            printf("Received data: %s\n", tickerBuffer);
+            double price = extractJsonTicker(tickerBuffer, "USD");
+            snprintf(bitcoinStats.price, sizeof(bitcoinStats.price), "$%.0f", price);
+            formatWithCommas(bitcoinStats.price, sizeof(bitcoinStats.price));
+            lv_label_set_text(ui_Label2, bitcoinStats.price);
+            tickerLength = 0;
+            memset(tickerBuffer, 0, sizeof(tickerBuffer));
+        break;
+
+        default:
         break;
     }
     return ESP_OK;
@@ -502,7 +571,7 @@ void httpTask(void *arg){
     for(;;){
         if(connectionFlag){
             lv_obj_clear_flag(ui_Spinner1, LV_OBJ_FLAG_HIDDEN);
-            for(int i = 0; i < 3; i++){
+            for(int i = 0; i < 4; i++){
                 esp_http_client_config_t config = {
                     .method = HTTP_METHOD_GET,
                     .cert_pem = NULL,
@@ -510,6 +579,7 @@ void httpTask(void *arg){
                 if(i == 0){config.url = blockchainAPI.stats; config.event_handler = clientStatsHandler;}
                 if(i == 1){config.url = blockchainAPI.bcperblock; config.event_handler = perBlockHandler;}
                 if(i == 2){config.url = blockchainAPI.marketcap; config.event_handler = mcapHandler;}
+                if(i == 3){config.url = blockchainAPI.btcTicker; config.event_handler = clientTickerHandler;}
 
                 esp_http_client_handle_t client = esp_http_client_init(&config);
                 esp_http_client_perform(client);
@@ -540,7 +610,7 @@ void httpTask(void *arg){
             fetchingAPI = false;
             vTaskDelay(3000 / portTICK_PERIOD_MS);
         }else{
-            vTaskDelay(60000 / portTICK_PERIOD_MS);
+            vTaskDelay(30000 / portTICK_PERIOD_MS); //Change back to 60
         }
     }
 }
@@ -558,14 +628,18 @@ void app_main(void) {
     xTaskCreatePinnedToCore(lvgl_task, "LCD", 8 * 1024, NULL, 3, NULL, 1);
     lv_disp_load_scr(ui_Screen3);
     ESP_LOGI("pp", "Got passed here");
-    wifiSetup();
     #ifdef CONFIG_RESTORE
         ESP_LOGI("..", "RESETING NVS");
+        lv_label_set_text(ui_Label20, "Erasing router settings");
+        wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+        ESP_ERROR_CHECK(esp_wifi_init(&cfg));
         ESP_ERROR_CHECK(esp_wifi_restore()); //Use this to clear Wi-Fi configuration (stored as NVS) esp_wifi_init needs to happen before.
     #else
-        start_wps();  
-        ESP_LOGI("..", "Ready for API");
-        
-        xTaskCreatePinnedToCore(httpTask, "API", 8*1024, NULL, 5, NULL, 1);
+    wifiSetup();
+        wps_status_t wpsStatus = start_wps();  
+        if(wpsStatus == WPS_CREDENTIALS_FOUND){
+            ESP_LOGI("..", "Ready for API");
+            xTaskCreatePinnedToCore(httpTask, "API", 16*1024, NULL, 5, NULL, 1);
+        }
     #endif
 }
