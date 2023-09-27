@@ -30,7 +30,7 @@
 #define WPS_MODE WPS_TYPE_DISABLE
 #endif /*CONFIG_EXAMPLE_WPS_TYPE_PBC*/
 
-#define MAX_RETRY_ATTEMPTS     2
+#define MAX_RETRY_ATTEMPTS     10
 
 #ifndef PIN2STR
 #define PIN2STR(a) (a)[0], (a)[1], (a)[2], (a)[3], (a)[4], (a)[5], (a)[6], (a)[7]
@@ -42,7 +42,7 @@
 static esp_wps_config_t config = WPS_CONFIG_INIT_DEFAULT(WPS_MODE);
 static wifi_config_t wps_ap_creds[MAX_WPS_AP_CRED];
 static int s_ap_creds_num = 0;
-//static int s_retry_num = 0;
+static int s_retry_num = 0;
 static const char *TAG = "BTC_PRICE";
 bool connectionFlag = false;
 bool fetchingAPI = true;
@@ -100,6 +100,7 @@ typedef enum {
 static void wifi_event_handler(void* arg, esp_event_base_t event_base,
                                 int32_t event_id, void* event_data)
     {
+        static int ap_idx = 1;
     switch (event_id) {
         case WIFI_EVENT_STA_START:
             ESP_LOGI(TAG, "WIFI_EVENT_STA_START");
@@ -107,7 +108,32 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
         case WIFI_EVENT_STA_DISCONNECTED:
             connectionFlag = false;
             ESP_LOGI(TAG, "WIFI_EVENT_STA_DISCONNECTED");
-            esp_wifi_connect();
+            if (s_retry_num < MAX_RETRY_ATTEMPTS) {
+                esp_wifi_connect();
+                s_retry_num++;
+            } else if (ap_idx < s_ap_creds_num) {
+                /* Try the next AP credential if first one fails */
+
+                if (ap_idx < s_ap_creds_num) {
+                    ESP_LOGI(TAG, "Connecting to SSID: %s, Passphrase: %s",
+                             wps_ap_creds[ap_idx].sta.ssid, wps_ap_creds[ap_idx].sta.password);
+                    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wps_ap_creds[ap_idx++]) );
+                    esp_wifi_connect();
+                }
+                s_retry_num = 0;
+            } else {
+                ESP_LOGI(TAG, "Failed to connect!");
+                esp_wifi_stop();
+                esp_wifi_deinit();
+                wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+                esp_wifi_init(&cfg);
+                esp_wifi_set_mode(WIFI_MODE_STA);
+                esp_wifi_start();
+                wifi_config_t wifi_config;
+                esp_wifi_get_config(WIFI_IF_STA, &wifi_config); 
+                esp_wifi_connect();
+                s_retry_num = 0;
+            }
             break;
         case WIFI_EVENT_STA_WPS_ER_SUCCESS:
             ESP_LOGI(TAG, "WIFI_EVENT_STA_WPS_ER_SUCCESS");
@@ -618,6 +644,8 @@ void app_main(void) {
         wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
         ESP_ERROR_CHECK(esp_wifi_init(&cfg));
         ESP_ERROR_CHECK(esp_wifi_restore()); //Use this to clear Wi-Fi configuration (stored as NVS) esp_wifi_init needs to happen before.
+        esp_wifi_stop(); 
+        esp_wifi_deinit(); //When you dont power the device down after resetting the credentials, its better to fully deinit wifi
     #else
     wifiSetup();
         esp_log_level_set("wifi", ESP_LOG_NONE);
