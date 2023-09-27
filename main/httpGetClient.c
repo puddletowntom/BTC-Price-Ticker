@@ -42,7 +42,7 @@
 static esp_wps_config_t config = WPS_CONFIG_INIT_DEFAULT(WPS_MODE);
 static wifi_config_t wps_ap_creds[MAX_WPS_AP_CRED];
 static int s_ap_creds_num = 0;
-static int s_retry_num = 0;
+//static int s_retry_num = 0;
 static const char *TAG = "BTC_PRICE";
 bool connectionFlag = false;
 bool fetchingAPI = true;
@@ -100,46 +100,25 @@ typedef enum {
 static void wifi_event_handler(void* arg, esp_event_base_t event_base,
                                 int32_t event_id, void* event_data)
     {
-    static int ap_idx = 1;
-
     switch (event_id) {
         case WIFI_EVENT_STA_START:
             ESP_LOGI(TAG, "WIFI_EVENT_STA_START");
             break;
-        // case WIFI_EVENT_STA_CONNECTED:  
-        //     //ESP_LOGI(TAG, "WIFI_EVENT_STA_CONNECTED");
-        //     connectionFlag = true;
-        //     break;
         case WIFI_EVENT_STA_DISCONNECTED:
             connectionFlag = false;
             ESP_LOGI(TAG, "WIFI_EVENT_STA_DISCONNECTED");
-            if (s_retry_num < MAX_RETRY_ATTEMPTS) {
-                esp_wifi_connect();
-                s_retry_num++;
-            } else if (ap_idx < s_ap_creds_num) {
-                /* Try the next AP credential if first one fails */
-
-                if (ap_idx < s_ap_creds_num) {
-                    ESP_LOGI(TAG, "Connecting to SSID: %s, Passphrase: %s",
-                             wps_ap_creds[ap_idx].sta.ssid, wps_ap_creds[ap_idx].sta.password);
-                    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wps_ap_creds[ap_idx++]) );
-                    esp_wifi_connect();
-                }
-                s_retry_num = 0;
-            } else {
-                ESP_LOGI(TAG, "Failed to connect!");
-            }
-
+            esp_wifi_connect();
             break;
         case WIFI_EVENT_STA_WPS_ER_SUCCESS:
             ESP_LOGI(TAG, "WIFI_EVENT_STA_WPS_ER_SUCCESS");
+            lv_obj_clean(lv_scr_act());
             {
                 wifi_event_sta_wps_er_success_t *evt =
                     (wifi_event_sta_wps_er_success_t *)event_data;
                 int i;
 
                 if (evt) {
-                    ESP_LOGI("Ronan: ","Got here");
+                    ESP_LOGI("..: ","Got here");
                     s_ap_creds_num = evt->ap_cred_cnt;
                     for (i = 0; i < s_ap_creds_num; i++) {
                         memcpy(wps_ap_creds[i].sta.ssid, evt->ap_cred[i].ssid,
@@ -162,12 +141,14 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
             }
             break;
         case WIFI_EVENT_STA_WPS_ER_FAILED:
+            lv_obj_clean(lv_scr_act());
             ESP_LOGI(TAG, "WIFI_EVENT_STA_WPS_ER_FAILED");
             ESP_ERROR_CHECK(esp_wifi_wps_disable());
             ESP_ERROR_CHECK(esp_wifi_wps_enable(&config));
             ESP_ERROR_CHECK(esp_wifi_wps_start(0));
             break;
         case WIFI_EVENT_STA_WPS_ER_TIMEOUT:
+            lv_obj_clean(lv_scr_act());
             ESP_LOGI(TAG, "WIFI_EVENT_STA_WPS_ER_TIMEOUT");
             ESP_ERROR_CHECK(esp_wifi_wps_disable());
             ESP_ERROR_CHECK(esp_wifi_wps_enable(&config));
@@ -241,7 +222,7 @@ static int start_wps(){
     esp_err_t err = esp_wifi_get_config(WIFI_IF_STA, &wifi_config); 
 
     if(err == ESP_OK){
-        ESP_LOGI("RONAN: ", "SSID: %s, PW: %s\n", (char*) wifi_config.sta.ssid, (char*) wifi_config.sta.password);
+        ESP_LOGI("..: ", "SSID: %s, PW: %s\n", (char*) wifi_config.sta.ssid, (char*) wifi_config.sta.password);
         if(strlen((char *)wifi_config.sta.ssid) > 0 && strlen((char *)wifi_config.sta.password) > 0){
             waitWPS();
             esp_wifi_wps_disable();
@@ -249,18 +230,21 @@ static int start_wps(){
             ESP_ERROR_CHECK(esp_wifi_connect());
             ESP_LOGI("..", "After connection");
             return WPS_CREDENTIALS_FOUND;
-        }else { //No credentials, then ask user for WPS
+        }else{ //No credentials, then ask user for WPS
             lv_disp_load_scr(ui_Screen2);
             while(!wpsComplete){
                 vTaskDelay(100 / portTICK_PERIOD_MS);
             }
-
+            esp_wifi_wps_disable();
+            esp_wifi_get_config(WIFI_IF_STA, &wifi_config); 
+            ESP_LOGI("Restarting: ", "mySSID: %s, myPW: %s\n", (char*) wifi_config.sta.ssid, (char*) wifi_config.sta.password);
+            esp_restart(); //NVS messing up screen so restart when you get credentials.
             //lv_disp_load_scr(ui_Screen3);
             //ESP_ERROR_CHECK(esp_wifi_connect());
             return WPS_CREDENTIALS_FOUND;
         }
     }else{
-        ESP_LOGI("RONAN: ", "Couldn't get config: %d\n", (int) err);
+        ESP_LOGI("..: ", "Couldn't get config: %d\n", (int) err);
         return WPS_CONFIG_ERROR;
     }
     return WPS_CONFIG_ERROR;
@@ -268,34 +252,17 @@ static int start_wps(){
 
 double extractJsonVal(char *jsonMsg, char *jsonKey){
     cJSON *root = cJSON_Parse(jsonMsg);
-    double value = 0.0;
-    if (root == NULL) {
-        printf("Error parsing JSON: %s\n", cJSON_GetErrorPtr());
-    }
-    cJSON *jsonValue = cJSON_GetObjectItemCaseSensitive(root, jsonKey);
-    if (cJSON_IsNumber(jsonValue)) {
-        value = jsonValue->valuedouble;
-        printf("The value is %f\n", value);
-    } else {
-        printf("Error getting message\n");
-    }
+    if (root == NULL) {printf("Error parsing JSON: %s\n", cJSON_GetErrorPtr());}
+    double value = cJSON_GetObjectItemCaseSensitive(root, jsonKey)->valuedouble;
     cJSON_Delete(root);
     return value;
 }
 
 double extractJsonTicker(char *jsonMsg, char *jsonKey){
     cJSON *root = cJSON_Parse(jsonMsg);
-    if (root == NULL) {
-        printf("Error parsing JSON: %s\n", cJSON_GetErrorPtr());
-    }
+    if (root == NULL) {printf("Error parsing JSON: %s\n", cJSON_GetErrorPtr());}
     cJSON *USD = cJSON_GetObjectItemCaseSensitive(root, jsonKey);
     double USD_last = cJSON_GetObjectItemCaseSensitive(USD, "last")->valuedouble;
-    // if (cJSON_IsNumber(jsonValue)) {
-    //     value = jsonValue->valuedouble;
-    //     printf("The value is %f\n", value);
-    // } else {
-    //     printf("Error getting message\n");
-    // }
     ESP_LOGI("Ticker: ", "%.2f", USD_last);
     cJSON_Delete(root);
     return USD_last;
@@ -507,10 +474,7 @@ esp_err_t mcapHandler(esp_http_client_event_handle_t evt){
         snprintf(mcapResult, sizeof(mcapResult), "$%.*s", strlen(formatted_number), formatted_number);
         free(formatted_number);
         lv_label_set_text(ui_Label4, mcapResult);
-        lv_obj_add_flag(ui_Spinner1, LV_OBJ_FLAG_HIDDEN);
-        fetchingAPI = false;
         break;
-
     default:
         break;
     }
@@ -544,6 +508,8 @@ esp_err_t clientTickerHandler(esp_http_client_event_handle_t evt){
             lv_label_set_text(ui_Label2, bitcoinStats.price);
             tickerLength = 0;
             memset(tickerBuffer, 0, sizeof(tickerBuffer));
+            lv_obj_add_flag(ui_Spinner1, LV_OBJ_FLAG_HIDDEN);
+            fetchingAPI = false;
         break;
 
         default:
@@ -563,10 +529,34 @@ void lvgl_task(void *pvParameters) {
     }
 }
 
+// Define a task handle to keep track of the task you want to delete
+TaskHandle_t taskHandle = NULL;
+static int previous_channel = -1;
+
+void wifi_channel_monitor_task(void *pvParameter) {
+    while (1) {
+        wifi_ap_record_t ap_info;
+        esp_wifi_sta_get_ap_info(&ap_info);
+
+        if (ap_info.primary > 0) {
+            int current_channel = ap_info.primary;
+            if (current_channel != previous_channel) {
+                // Wi-Fi channel has changed from previous_channel to current_channel
+                // Set your flag or perform any desired action here.
+                previous_channel = current_channel;
+                ESP_LOGI("CHANNEL", "Detected change");
+                lv_obj_clean(lv_scr_act());
+            }
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(10));  // Check every 10 seconds, adjust as needed
+    }
+}
+
 void httpTask(void *arg){
     //bool *wifiConfig = (bool *)arg;
     //bool isWifiConfig = *wifiConfig;
-    static bool beginMainSreen = true;
+    static bool starting = true;
     bool currentState = connectionFlag;
     for(;;){
         if(connectionFlag){
@@ -597,17 +587,11 @@ void httpTask(void *arg){
             currentState = connectionFlag;
         }
 
-        if(beginMainSreen == true && fetchingAPI == false){
+        if(starting == true && fetchingAPI == false){
             lv_disp_load_scr(ui_Screen1);
-            beginMainSreen = false;
+            starting = false;
         }
-        if(fetchingAPI){
-            static int attempts = 0;
-            attempts++;
-            if(attempts >= 15){
-                lv_disp_load_scr(ui_Screen1);
-            }
-            fetchingAPI = false;
+        if(starting){
             vTaskDelay(3000 / portTICK_PERIOD_MS);
         }else{
             vTaskDelay(30000 / portTICK_PERIOD_MS); //Change back to 60
@@ -636,8 +620,12 @@ void app_main(void) {
         ESP_ERROR_CHECK(esp_wifi_restore()); //Use this to clear Wi-Fi configuration (stored as NVS) esp_wifi_init needs to happen before.
     #else
     wifiSetup();
+        esp_log_level_set("wifi", ESP_LOG_NONE);
+        xTaskCreate(&wifi_channel_monitor_task, "wifi_channel_monitor_task", 4096, NULL, 5, &taskHandle);
         wps_status_t wpsStatus = start_wps();  
         if(wpsStatus == WPS_CREDENTIALS_FOUND){
+            vTaskDelete(taskHandle);
+            esp_log_level_set("wifi", ESP_LOG_INFO); // Set log level for the "wifi" component to INFO
             ESP_LOGI("..", "Ready for API");
             xTaskCreatePinnedToCore(httpTask, "API", 16*1024, NULL, 5, NULL, 1);
         }
