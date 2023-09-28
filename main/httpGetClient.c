@@ -123,21 +123,21 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
                 s_retry_num = 0;
             } else {
                 ESP_LOGI(TAG, "Failed to connect!");
-                esp_wifi_stop();
-                esp_wifi_deinit();
-                wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-                esp_wifi_init(&cfg);
-                esp_wifi_set_mode(WIFI_MODE_STA);
-                esp_wifi_start();
-                wifi_config_t wifi_config;
-                esp_wifi_get_config(WIFI_IF_STA, &wifi_config); 
-                esp_wifi_connect();
+                // esp_wifi_stop();
+                // esp_wifi_deinit();
+                // wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+                // esp_wifi_init(&cfg);
+                // esp_wifi_set_mode(WIFI_MODE_STA);
+                // esp_wifi_start();
+                // wifi_config_t wifi_config;
+                // esp_wifi_get_config(WIFI_IF_STA, &wifi_config); 
+                // esp_wifi_connect();
                 s_retry_num = 0;
             }
             break;
         case WIFI_EVENT_STA_WPS_ER_SUCCESS:
             ESP_LOGI(TAG, "WIFI_EVENT_STA_WPS_ER_SUCCESS");
-            lv_obj_clean(lv_scr_act());
+            //lv_obj_clean(lv_scr_act());
             {
                 wifi_event_sta_wps_er_success_t *evt =
                     (wifi_event_sta_wps_er_success_t *)event_data;
@@ -167,14 +167,14 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
             }
             break;
         case WIFI_EVENT_STA_WPS_ER_FAILED:
-            lv_obj_clean(lv_scr_act());
+            //lv_obj_clean(lv_scr_act());
             ESP_LOGI(TAG, "WIFI_EVENT_STA_WPS_ER_FAILED");
             ESP_ERROR_CHECK(esp_wifi_wps_disable());
             ESP_ERROR_CHECK(esp_wifi_wps_enable(&config));
             ESP_ERROR_CHECK(esp_wifi_wps_start(0));
             break;
         case WIFI_EVENT_STA_WPS_ER_TIMEOUT:
-            lv_obj_clean(lv_scr_act());
+            //lv_obj_clean(lv_scr_act());
             ESP_LOGI(TAG, "WIFI_EVENT_STA_WPS_ER_TIMEOUT");
             ESP_ERROR_CHECK(esp_wifi_wps_disable());
             ESP_ERROR_CHECK(esp_wifi_wps_enable(&config));
@@ -250,6 +250,7 @@ static int start_wps(){
     if(err == ESP_OK){
         ESP_LOGI("..: ", "SSID: %s, PW: %s\n", (char*) wifi_config.sta.ssid, (char*) wifi_config.sta.password);
         if(strlen((char *)wifi_config.sta.ssid) > 0 && strlen((char *)wifi_config.sta.password) > 0){
+            lv_disp_load_scr(ui_Screen3);
             waitWPS();
             esp_wifi_wps_disable();
             ESP_LOGI("..", "Trying to connect to wifi");
@@ -260,11 +261,13 @@ static int start_wps(){
             lv_disp_load_scr(ui_Screen2);
             while(!wpsComplete){
                 vTaskDelay(100 / portTICK_PERIOD_MS);
-            }
-            esp_wifi_wps_disable();
+            }           
+            lv_disp_load_scr(ui_Screen3);
             esp_wifi_get_config(WIFI_IF_STA, &wifi_config); 
-            ESP_LOGI("Restarting: ", "mySSID: %s, myPW: %s\n", (char*) wifi_config.sta.ssid, (char*) wifi_config.sta.password);
-            esp_restart(); //NVS messing up screen so restart when you get credentials.
+            esp_wifi_wps_disable();
+            esp_wifi_connect();
+            //ESP_LOGI("Restarting: ", "mySSID: %s, myPW: %s\n", (char*) wifi_config.sta.ssid, (char*) wifi_config.sta.password);
+           // esp_restart(); //NVS messing up screen so restart when you get credentials.
             //lv_disp_load_scr(ui_Screen3);
             //ESP_ERROR_CHECK(esp_wifi_connect());
             return WPS_CREDENTIALS_FOUND;
@@ -556,34 +559,34 @@ void lvgl_task(void *pvParameters) {
 }
 
 // Define a task handle to keep track of the task you want to delete
-TaskHandle_t taskHandle = NULL;
-static int previous_channel = -1;
+//TaskHandle_t taskHandle = NULL;
+//static int previous_channel = -1;
 
-void wifi_channel_monitor_task(void *pvParameter) {
-    while (1) {
-        wifi_ap_record_t ap_info;
-        esp_wifi_sta_get_ap_info(&ap_info);
+// void wifi_channel_monitor_task(void *pvParameter) {
+//     while (1) {
+//         wifi_ap_record_t ap_info;
+//         esp_wifi_sta_get_ap_info(&ap_info);
 
-        if (ap_info.primary > 0) {
-            int current_channel = ap_info.primary;
-            if (current_channel != previous_channel) {
-                // Wi-Fi channel has changed from previous_channel to current_channel
-                // Set your flag or perform any desired action here.
-                previous_channel = current_channel;
-                ESP_LOGI("CHANNEL", "Detected change");
-                lv_obj_clean(lv_scr_act());
-            }
-        }
+//         if (ap_info.primary > 0) {
+//             int current_channel = ap_info.primary;
+//             if (current_channel != previous_channel) {
+//                 // Wi-Fi channel has changed from previous_channel to current_channel
+//                 // Set your flag or perform any desired action here.
+//                 previous_channel = current_channel;
+//                 ESP_LOGI("CHANNEL", "Detected change");
+//                 //lv_obj_clean(lv_scr_act());
+//             }
+//         }
 
-        vTaskDelay(pdMS_TO_TICKS(10));  // Check every 10 seconds, adjust as needed
-    }
-}
+//         vTaskDelay(pdMS_TO_TICKS(10));  // Check every 10 seconds, adjust as needed
+//     }
+// }
 
 void httpTask(void *arg){
     //bool *wifiConfig = (bool *)arg;
     //bool isWifiConfig = *wifiConfig;
     static bool starting = true;
-    bool currentState = connectionFlag;
+    bool currentState = !connectionFlag;
     for(;;){
         if(connectionFlag){
             lv_obj_clear_flag(ui_Spinner1, LV_OBJ_FLAG_HIDDEN);
@@ -636,7 +639,6 @@ void app_main(void) {
     screen_init();
     ui_init();
     xTaskCreatePinnedToCore(lvgl_task, "LCD", 8 * 1024, NULL, 3, NULL, 1);
-    lv_disp_load_scr(ui_Screen3);
     ESP_LOGI("pp", "Got passed here");
     #ifdef CONFIG_RESTORE
         ESP_LOGI("..", "RESETING NVS");
@@ -648,12 +650,12 @@ void app_main(void) {
         esp_wifi_deinit(); //When you dont power the device down after resetting the credentials, its better to fully deinit wifi
     #else
     wifiSetup();
-        esp_log_level_set("wifi", ESP_LOG_NONE);
-        xTaskCreate(&wifi_channel_monitor_task, "wifi_channel_monitor_task", 4096, NULL, 5, &taskHandle);
+        //esp_log_level_set("wifi", ESP_LOG_NONE);
+        //xTaskCreate(&wifi_channel_monitor_task, "wifi_channel_monitor_task", 4096, NULL, 5, &taskHandle);
         wps_status_t wpsStatus = start_wps();  
         if(wpsStatus == WPS_CREDENTIALS_FOUND){
-            vTaskDelete(taskHandle);
-            esp_log_level_set("wifi", ESP_LOG_INFO); // Set log level for the "wifi" component to INFO
+            //vTaskDelete(taskHandle);
+           // esp_log_level_set("wifi", ESP_LOG_INFO); // Set log level for the "wifi" component to INFO
             ESP_LOGI("..", "Ready for API");
             xTaskCreatePinnedToCore(httpTask, "API", 16*1024, NULL, 5, NULL, 1);
         }

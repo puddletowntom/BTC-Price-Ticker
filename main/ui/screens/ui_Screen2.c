@@ -10,7 +10,7 @@ void ui_Screen2_screen_init(void)
     lv_obj_set_width(ui_Image3, LV_SIZE_CONTENT);   /// 150
     lv_obj_set_height(ui_Image3, LV_SIZE_CONTENT);    /// 167
     lv_obj_set_x(ui_Image3, 2);
-    lv_obj_set_y(ui_Image3, -46);
+    lv_obj_set_y(ui_Image3, -96);
     lv_obj_set_align(ui_Image3, LV_ALIGN_CENTER);
     lv_obj_add_flag(ui_Image3, LV_OBJ_FLAG_ADV_HITTEST);     /// Flags
     lv_obj_clear_flag(ui_Image3, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
@@ -19,7 +19,7 @@ void ui_Screen2_screen_init(void)
     lv_obj_set_width(ui_S2_Label1, LV_SIZE_CONTENT);   /// 1
     lv_obj_set_height(ui_S2_Label1, LV_SIZE_CONTENT);    /// 1
     lv_obj_set_x(ui_S2_Label1, 3);
-    lv_obj_set_y(ui_S2_Label1, 79);
+    lv_obj_set_y(ui_S2_Label1, 29);
     lv_obj_set_align(ui_S2_Label1, LV_ALIGN_CENTER);
     lv_label_set_text(ui_S2_Label1, "Press the WPS button ");
 
@@ -27,7 +27,7 @@ void ui_Screen2_screen_init(void)
     lv_obj_set_width(ui_S2_Label2, LV_SIZE_CONTENT);   /// 1
     lv_obj_set_height(ui_S2_Label2, LV_SIZE_CONTENT);    /// 1
     lv_obj_set_x(ui_S2_Label2, 0);
-    lv_obj_set_y(ui_S2_Label2, 101);
+    lv_obj_set_y(ui_S2_Label2, 51);
     lv_obj_set_align(ui_S2_Label2, LV_ALIGN_CENTER);
     lv_label_set_text(ui_S2_Label2, "on your Wi-Fi Router");
 }
