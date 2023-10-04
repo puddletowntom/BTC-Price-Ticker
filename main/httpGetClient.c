@@ -10,7 +10,6 @@
 #include "esp_http_client.h"
 #include "cJSON.h"
 #include "nvs_flash.h"
-#include "my_data.h"
 #include "ui/ui.h"
 #include "lvgl.h"
 #include "board.h"
@@ -41,6 +40,7 @@
 
 static esp_wps_config_t config = WPS_CONFIG_INIT_DEFAULT(WPS_MODE);
 static wifi_config_t wps_ap_creds[MAX_WPS_AP_CRED];
+wifi_config_t wifi_config;
 static int s_ap_creds_num = 0;
 static int s_retry_num = 0;
 static const char *TAG = "BTC_PRICE";
@@ -225,73 +225,54 @@ static void wifiSetup(){
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &got_ip_event_handler, NULL));
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_start());
+    ESP_ERROR_CHECK(esp_wifi_get_config(WIFI_IF_STA, &wifi_config)); 
 }
 
-void waitWPS(){
-    ESP_LOGI("..", "waiting for WPS");
-    int64_t start_time = esp_timer_get_time();
-    int64_t loop_duration = 10 * 1000000;  // 10 seconds in microseconds
-    while (1) {
-        int64_t current_time = esp_timer_get_time();
-        if ((current_time - start_time) >= loop_duration) {
-            break;  // Exit the while loop after 10 seconds
-        }
-        vTaskDelay(100 / portTICK_PERIOD_MS);
-    }
-}
+static int credentialsCheck(){
+    ESP_LOGI("..: ", "SSID: %s, PW: %s\n", (char*) wifi_config.sta.ssid, (char*) wifi_config.sta.password);
+    if(strlen((char *)wifi_config.sta.ssid) > 0 && strlen((char *)wifi_config.sta.password) > 0){
+        nvs_flash_deinit(); //Got wifi credentials saved to RAM so deinit the NVS.
+        lv_disp_load_scr(ui_Screen3);
+        return WPS_CREDENTIALS_FOUND;
+    }else{ //No credentials, then ask user for WPS
+        ESP_LOGI(TAG, "start wps...");
+        ESP_ERROR_CHECK(esp_wifi_wps_enable(&config));
+        ESP_ERROR_CHECK(esp_wifi_wps_start(0));
+        lv_disp_load_scr(ui_Screen2);
+        while(!wpsComplete){
+            vTaskDelay(10/portTICK_PERIOD_MS);
+        }           
+        esp_wifi_get_config(WIFI_IF_STA, &wifi_config); 
+        esp_wifi_wps_disable();
+        nvs_flash_deinit(); //Got wifi credentials saved to RAM so deinit the NVS.
+        lv_disp_load_scr(ui_Screen3);
 
-static int start_wps(){
-    ESP_LOGI(TAG, "start wps...");
-    ESP_ERROR_CHECK(esp_wifi_wps_enable(&config));
-    ESP_ERROR_CHECK(esp_wifi_wps_start(0));
-    wifi_config_t wifi_config;
-    esp_err_t err = esp_wifi_get_config(WIFI_IF_STA, &wifi_config); 
-
-    if(err == ESP_OK){
-        ESP_LOGI("..: ", "SSID: %s, PW: %s\n", (char*) wifi_config.sta.ssid, (char*) wifi_config.sta.password);
-        if(strlen((char *)wifi_config.sta.ssid) > 0 && strlen((char *)wifi_config.sta.password) > 0){
-            lv_disp_load_scr(ui_Screen3);
-            waitWPS();
-            esp_wifi_wps_disable();
-            ESP_LOGI("..", "Trying to connect to wifi");
-            ESP_ERROR_CHECK(esp_wifi_connect());
-            ESP_LOGI("..", "After connection");
-            return WPS_CREDENTIALS_FOUND;
-        }else{ //No credentials, then ask user for WPS
-            lv_disp_load_scr(ui_Screen2);
-            while(!wpsComplete){
-                vTaskDelay(100 / portTICK_PERIOD_MS);
-            }           
-            lv_disp_load_scr(ui_Screen3);
-            esp_wifi_get_config(WIFI_IF_STA, &wifi_config); 
-            esp_wifi_wps_disable();
-            esp_wifi_connect();
-            //ESP_LOGI("Restarting: ", "mySSID: %s, myPW: %s\n", (char*) wifi_config.sta.ssid, (char*) wifi_config.sta.password);
-           // esp_restart(); //NVS messing up screen so restart when you get credentials.
-            //lv_disp_load_scr(ui_Screen3);
-            //ESP_ERROR_CHECK(esp_wifi_connect());
-            return WPS_CREDENTIALS_FOUND;
-        }
-    }else{
-        ESP_LOGI("..: ", "Couldn't get config: %d\n", (int) err);
-        return WPS_CONFIG_ERROR;
+        return WPS_CREDENTIALS_FOUND;
     }
     return WPS_CONFIG_ERROR;
 }
 
 double extractJsonVal(char *jsonMsg, char *jsonKey){
+    static double prevValue = 0.0;
     cJSON *root = cJSON_Parse(jsonMsg);
-    if (root == NULL) {printf("Error parsing JSON: %s\n", cJSON_GetErrorPtr());}
+    if (root == NULL){
+        return prevValue; //If bad parse just skip it and feed back the previous value
+    }
     double value = cJSON_GetObjectItemCaseSensitive(root, jsonKey)->valuedouble;
+    prevValue = value;
     cJSON_Delete(root);
     return value;
 }
 
 double extractJsonTicker(char *jsonMsg, char *jsonKey){
+    static double prevUSDVal = 0.0;
     cJSON *root = cJSON_Parse(jsonMsg);
-    if (root == NULL) {printf("Error parsing JSON: %s\n", cJSON_GetErrorPtr());}
+    if (root == NULL) {
+        return prevUSDVal; //If bad parse just skip it and feed back the previous value
+    }
     cJSON *USD = cJSON_GetObjectItemCaseSensitive(root, jsonKey);
     double USD_last = cJSON_GetObjectItemCaseSensitive(USD, "last")->valuedouble;
+    prevUSDVal = USD_last;
     ESP_LOGI("Ticker: ", "%.2f", USD_last);
     cJSON_Delete(root);
     return USD_last;
@@ -550,41 +531,13 @@ esp_err_t clientTickerHandler(esp_http_client_event_handle_t evt){
 extern void screen_init(void);
 
 void lvgl_task(void *pvParameters) {
-    // LVGL initialization, UI setup, and event handling
-    // This task should regularly call lv_task_handler() to update the UI.
     while (1) {
         lv_task_handler();
         vTaskDelay(pdMS_TO_TICKS(10)); // Adjust the delay as needed
     }
 }
 
-// Define a task handle to keep track of the task you want to delete
-//TaskHandle_t taskHandle = NULL;
-//static int previous_channel = -1;
-
-// void wifi_channel_monitor_task(void *pvParameter) {
-//     while (1) {
-//         wifi_ap_record_t ap_info;
-//         esp_wifi_sta_get_ap_info(&ap_info);
-
-//         if (ap_info.primary > 0) {
-//             int current_channel = ap_info.primary;
-//             if (current_channel != previous_channel) {
-//                 // Wi-Fi channel has changed from previous_channel to current_channel
-//                 // Set your flag or perform any desired action here.
-//                 previous_channel = current_channel;
-//                 ESP_LOGI("CHANNEL", "Detected change");
-//                 //lv_obj_clean(lv_scr_act());
-//             }
-//         }
-
-//         vTaskDelay(pdMS_TO_TICKS(10));  // Check every 10 seconds, adjust as needed
-//     }
-// }
-
 void httpTask(void *arg){
-    //bool *wifiConfig = (bool *)arg;
-    //bool isWifiConfig = *wifiConfig;
     static bool starting = true;
     bool currentState = !connectionFlag;
     for(;;){
@@ -623,6 +576,7 @@ void httpTask(void *arg){
         if(starting){
             vTaskDelay(3000 / portTICK_PERIOD_MS);
         }else{
+
             vTaskDelay(30000 / portTICK_PERIOD_MS); //Change back to 60
         }
     }
@@ -650,13 +604,10 @@ void app_main(void) {
         esp_wifi_deinit(); //When you dont power the device down after resetting the credentials, its better to fully deinit wifi
     #else
     wifiSetup();
-        //esp_log_level_set("wifi", ESP_LOG_NONE);
-        //xTaskCreate(&wifi_channel_monitor_task, "wifi_channel_monitor_task", 4096, NULL, 5, &taskHandle);
-        wps_status_t wpsStatus = start_wps();  
+        wps_status_t wpsStatus = credentialsCheck();  
         if(wpsStatus == WPS_CREDENTIALS_FOUND){
-            //vTaskDelete(taskHandle);
-           // esp_log_level_set("wifi", ESP_LOG_INFO); // Set log level for the "wifi" component to INFO
             ESP_LOGI("..", "Ready for API");
+            ESP_ERROR_CHECK(esp_wifi_connect());
             xTaskCreatePinnedToCore(httpTask, "API", 16*1024, NULL, 5, NULL, 1);
         }
     #endif
