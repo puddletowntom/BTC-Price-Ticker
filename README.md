@@ -27,7 +27,7 @@ For the 3D printed case I have included the 3mf files. This project includes the
 - ESP-IDF for development environment,
 - SquareLine Studio for display graphics
 
-#Pinout
+# Pinout
 
 You can find the entire pinout with the schematic provided. But a brief overview is as follows,
 
