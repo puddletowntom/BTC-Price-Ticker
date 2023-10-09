@@ -27,6 +27,16 @@ For the 3D printed case I have included the 3mf files. This project includes the
 - ESP-IDF for development environment,
 - SquareLine Studio for display graphics
 
+#Pinout
+
+You can find the entire pinout with the schematic provided. But a brief overview is as follows,
+
+Buttons
+
+- TP6 to TP7 for Power button,
+- SW3 - Reset button,
+- SW4 - Boot button
+
 # WPS
 
 When you first turn on the device you will be met with the WPS screen. This is so you can connect to your router without needing to type your Wi-Fi credentials. So you need to press your WPS button on your router to sync it with the device. If it fails to move on from the WPS screen, unplug the device and plug it back in and press the WPS button on the router again. If it syncs with your router it will move on to the next screen which is a Bitcoin logo saying setup. 
