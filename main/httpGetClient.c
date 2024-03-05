@@ -36,7 +36,12 @@
 #define PINSTR "%c%c%c%c%c%c%c%c"
 #endif
 
+#define WIFI_CONNECTED_BIT BIT0
 //#define CONFIG_RESTORE //Change to 1 only when clearing the NVS for factory defaults
+EventGroupHandle_t wifi_event_group;
+static SemaphoreHandle_t xGuiSemaphore = NULL;
+static TaskHandle_t g_lvgl_task_handle;
+
 
 static esp_wps_config_t config = WPS_CONFIG_INIT_DEFAULT(WPS_MODE);
 static wifi_config_t wps_ap_creds[MAX_WPS_AP_CRED];
@@ -97,6 +102,22 @@ typedef enum {
     WPS_CONFIG_ERROR,
 }wps_status_t;
 
+void lvgl_acquire(void)
+{
+    TaskHandle_t task = xTaskGetCurrentTaskHandle();
+    if (g_lvgl_task_handle != task) {
+        xSemaphoreTake(xGuiSemaphore, portMAX_DELAY);
+    }
+}
+
+void lvgl_release(void)
+{
+    TaskHandle_t task = xTaskGetCurrentTaskHandle();
+    if (g_lvgl_task_handle != task) {
+        xSemaphoreGive(xGuiSemaphore);
+    }
+}
+
 static void wifi_event_handler(void* arg, esp_event_base_t event_base,
                                 int32_t event_id, void* event_data)
     {
@@ -109,7 +130,10 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
             connectionFlag = false;
             ESP_LOGI(TAG, "WIFI_EVENT_STA_DISCONNECTED");
             if (s_retry_num < MAX_RETRY_ATTEMPTS) {
+                lvgl_acquire();
                 esp_wifi_connect();
+                lvgl_release();
+
                 s_retry_num++;
             } else if (ap_idx < s_ap_creds_num) {
                 /* Try the next AP credential if first one fails */
@@ -117,8 +141,10 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
                 if (ap_idx < s_ap_creds_num) {
                     ESP_LOGI(TAG, "Connecting to SSID: %s, Passphrase: %s",
                              wps_ap_creds[ap_idx].sta.ssid, wps_ap_creds[ap_idx].sta.password);
+                    lvgl_acquire();
                     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wps_ap_creds[ap_idx++]) );
                     esp_wifi_connect();
+                    lvgl_release();
                 }
                 s_retry_num = 0;
             } else {
@@ -155,15 +181,20 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
                     /* If multiple AP credentials are received from WPS, connect with first one */
                     ESP_LOGI(TAG, "Connecting to SSID: %s, Passphrase: %s",
                              wps_ap_creds[0].sta.ssid, wps_ap_creds[0].sta.password);
+                    
+                    lvgl_acquire();
                     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wps_ap_creds[0]) );
+                    lvgl_release();
                 }
                 /*
                  * If only one AP credential is received from WPS, there will be no event data and
                  * esp_wifi_set_config() is already called by WPS modules for backward compatibility
                  * with legacy apps. So directly attempt connection here.
                  */
+                lvgl_acquire();
                 ESP_ERROR_CHECK(esp_wifi_wps_disable());
                 esp_wifi_connect();
+                lvgl_release();
             }
             break;
         case WIFI_EVENT_STA_WPS_ER_FAILED:
@@ -198,6 +229,7 @@ static void got_ip_event_handler(void* arg, esp_event_base_t event_base,
     ESP_LOGI(TAG, "got ip: " IPSTR, IP2STR(&event->ip_info.ip));
     wpsComplete = true;
     connectionFlag = true;
+    xEventGroupSetBits(wifi_event_group, WIFI_CONNECTED_BIT);
 }
 
 bool isConfigured(uint8_t credArray[], int arraySize){
@@ -232,20 +264,20 @@ static int credentialsCheck(){
     ESP_LOGI("..: ", "SSID: %s, PW: %s\n", (char*) wifi_config.sta.ssid, (char*) wifi_config.sta.password);
     if(strlen((char *)wifi_config.sta.ssid) > 0 && strlen((char *)wifi_config.sta.password) > 0){
         nvs_flash_deinit(); //Got wifi credentials saved to RAM so deinit the NVS.
-        lv_disp_load_scr(ui_Screen3);
+        //lv_disp_load_scr(ui_Screen3);
         return WPS_CREDENTIALS_FOUND;
     }else{ //No credentials, then ask user for WPS
         ESP_LOGI(TAG, "start wps...");
         ESP_ERROR_CHECK(esp_wifi_wps_enable(&config));
         ESP_ERROR_CHECK(esp_wifi_wps_start(0));
-        lv_disp_load_scr(ui_Screen2);
+        //lv_disp_load_scr(ui_Screen2);
         while(!wpsComplete){
             vTaskDelay(10/portTICK_PERIOD_MS);
         }           
         esp_wifi_get_config(WIFI_IF_STA, &wifi_config); 
         esp_wifi_wps_disable();
         nvs_flash_deinit(); //Got wifi credentials saved to RAM so deinit the NVS.
-        lv_disp_load_scr(ui_Screen3);
+        //lv_disp_load_scr(ui_Screen3);
 
         return WPS_CREDENTIALS_FOUND;
     }
@@ -437,18 +469,18 @@ esp_err_t clientStatsHandler(esp_http_client_event_handle_t evt){
             snprintf(bitcoinStats.blockInterval, sizeof(bitcoinStats.blockInterval), "%.1f mins", blockInterval);
             snprintf(bitcoinStats.blockSize, sizeof(bitcoinStats.blockSize), "%.0f", blockSize);
 
-            //lv_label_set_text(ui_Label2, bitcoinStats.price);
-            lv_label_set_text(ui_Label7, bitcoinStats.supply);
-            lv_label_set_text(ui_Label9, bitcoinStats.hash);
-            lv_label_set_text(ui_Label13, bitcoinStats.blockInterval);
-            lv_label_set_text(ui_Label15, bitcoinStats.blockCount);
+            // //lv_label_set_text(ui_Label2, bitcoinStats.price);
+            // lv_label_set_text(ui_Label7, bitcoinStats.supply);
+            // lv_label_set_text(ui_Label9, bitcoinStats.hash);
+            // lv_label_set_text(ui_Label13, bitcoinStats.blockInterval);
+            // lv_label_set_text(ui_Label15, bitcoinStats.blockCount);
             int currentCycle = blockCount/210000;
             double blockRemain = (210000*(currentCycle+1)) - blockCount;
 
             snprintf(bitcoinStats.blockRemain, sizeof(bitcoinStats.blockRemain), "%.0f", blockRemain);
             formatWithCommas(bitcoinStats.blockRemain, sizeof(bitcoinStats.blockRemain));
             
-            lv_label_set_text(ui_Label17, bitcoinStats.blockRemain);
+            //lv_label_set_text(ui_Label17, bitcoinStats.blockRemain);
             break;
 
         default:
@@ -464,7 +496,7 @@ esp_err_t perBlockHandler(esp_http_client_event_handle_t evt){
         printf("perBlockHandler: %.*s\n", evt->data_len, (char *)evt->data);
         memset(btcPerBlock, 0, sizeof(btcPerBlock));
         snprintf(btcPerBlock, sizeof(btcPerBlock), "%.*s btc", evt->data_len, (char *)evt->data);
-        lv_label_set_text(ui_Label11, btcPerBlock);
+        //lv_label_set_text(ui_Label11, btcPerBlock);
         break;
 
     default:
@@ -483,7 +515,7 @@ esp_err_t mcapHandler(esp_http_client_event_handle_t evt){
         char* formatted_number = format_number(decimal_number);
         snprintf(mcapResult, sizeof(mcapResult), "$%.*s", strlen(formatted_number), formatted_number);
         free(formatted_number);
-        lv_label_set_text(ui_Label4, mcapResult);
+        //lv_label_set_text(ui_Label4, mcapResult);
         break;
     default:
         break;
@@ -515,10 +547,10 @@ esp_err_t clientTickerHandler(esp_http_client_event_handle_t evt){
             double price = extractJsonTicker(tickerBuffer, "USD");
             snprintf(bitcoinStats.price, sizeof(bitcoinStats.price), "$%.0f", price);
             formatWithCommas(bitcoinStats.price, sizeof(bitcoinStats.price));
-            lv_label_set_text(ui_Label2, bitcoinStats.price);
+            //lv_label_set_text(ui_Label2, bitcoinStats.price);
             tickerLength = 0;
             memset(tickerBuffer, 0, sizeof(tickerBuffer));
-            lv_obj_add_flag(ui_Spinner1, LV_OBJ_FLAG_HIDDEN);
+            //lv_obj_add_flag(ui_Spinner1, LV_OBJ_FLAG_HIDDEN);
             fetchingAPI = false;
         break;
 
@@ -530,19 +562,25 @@ esp_err_t clientTickerHandler(esp_http_client_event_handle_t evt){
 
 extern void screen_init(void);
 
-void lvgl_task(void *pvParameters) {
+static void gui_task(void *args)
+{
+    ESP_LOGI(TAG, "Start to run LVGL");
     while (1) {
-        lv_task_handler();
-        vTaskDelay(pdMS_TO_TICKS(10)); // Adjust the delay as needed
+        vTaskDelay(pdMS_TO_TICKS(10));
+
+        /* Try to take the semaphore, call lvgl related function on success */
+        if (pdTRUE == xSemaphoreTake(xGuiSemaphore, portMAX_DELAY)) {
+            lv_task_handler();
+            xSemaphoreGive(xGuiSemaphore);
+        }
     }
 }
 
 void httpTask(void *arg){
-    static bool starting = true;
-    bool currentState = !connectionFlag;
     for(;;){
-        if(connectionFlag){
-            lv_obj_clear_flag(ui_Spinner1, LV_OBJ_FLAG_HIDDEN);
+        EventBits_t bits = xEventGroupWaitBits(wifi_event_group, WIFI_CONNECTED_BIT, pdFALSE, pdTRUE, portMAX_DELAY);
+        if (bits & WIFI_CONNECTED_BIT) {
+            //lv_obj_clear_flag(ui_Spinner1, LV_OBJ_FLAG_HIDDEN);
             for(int i = 0; i < 4; i++){
                 esp_http_client_config_t config = {
                     .method = HTTP_METHOD_GET,
@@ -553,32 +591,18 @@ void httpTask(void *arg){
                 if(i == 2){config.url = blockchainAPI.marketcap; config.event_handler = mcapHandler;}
                 if(i == 3){config.url = blockchainAPI.btcTicker; config.event_handler = clientTickerHandler;}
 
+                lvgl_acquire();
                 esp_http_client_handle_t client = esp_http_client_init(&config);
                 esp_http_client_perform(client);
                 esp_http_client_cleanup(client);
+                lvgl_release();
             }
-            lv_obj_add_flag(ui_Spinner1, LV_OBJ_FLAG_HIDDEN);
-        }
-
-        if(currentState != connectionFlag){
-            if(connectionFlag){
-                lv_obj_set_style_bg_color(ui_Panel10, lv_color_hex(0x00FF16), LV_PART_MAIN | LV_STATE_DEFAULT);
-            }else{
-                lv_obj_set_style_bg_color(ui_Panel10, lv_color_hex(0x424242), LV_PART_MAIN | LV_STATE_DEFAULT);
-            }
-            currentState = connectionFlag;
-        }
-
-        if(starting == true && fetchingAPI == false){
-            lv_disp_load_scr(ui_Screen1);
-            starting = false;
-        }
-        if(starting){
-            vTaskDelay(3000 / portTICK_PERIOD_MS);
+            //lv_obj_add_flag(ui_Spinner1, LV_OBJ_FLAG_HIDDEN);
+            //lv_obj_set_style_bg_color(ui_Panel10, lv_color_hex(0x424242), LV_PART_MAIN | LV_STATE_DEFAULT);
         }else{
-
-            vTaskDelay(30000 / portTICK_PERIOD_MS); //Change back to 60
+           // lv_obj_set_style_bg_color(ui_Panel10, lv_color_hex(0x00FF16), LV_PART_MAIN | LV_STATE_DEFAULT);
         }
+        vTaskDelay(30000 / portTICK_PERIOD_MS);
     }
 }
 
@@ -589,26 +613,26 @@ void app_main(void) {
         ESP_ERROR_CHECK(nvs_flash_erase());
         ret = nvs_flash_init();
     }
-    ESP_ERROR_CHECK( ret );
+
+    xGuiSemaphore = xSemaphoreCreateMutex();
     screen_init();
     ui_init();
-    xTaskCreatePinnedToCore(lvgl_task, "LCD", 8 * 1024, NULL, 3, NULL, 1);
-    ESP_LOGI("pp", "Got passed here");
-    #ifdef CONFIG_RESTORE
-        ESP_LOGI("..", "RESETING NVS");
-        lv_label_set_text(ui_Label20, "Erasing router settings");
-        wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-        ESP_ERROR_CHECK(esp_wifi_init(&cfg));
-        ESP_ERROR_CHECK(esp_wifi_restore()); //Use this to clear Wi-Fi configuration (stored as NVS) esp_wifi_init needs to happen before.
-        esp_wifi_stop(); 
-        esp_wifi_deinit(); //When you dont power the device down after resetting the credentials, its better to fully deinit wifi
-    #else
+    xTaskCreatePinnedToCore(gui_task, "LCD", 8 * 1024, NULL, 4, &g_lvgl_task_handle, 1);
+    lv_disp_load_scr(ui_Screen1);
+
+    wifi_event_group = xEventGroupCreate();
+    lvgl_acquire();
     wifiSetup();
-        wps_status_t wpsStatus = credentialsCheck();  
-        if(wpsStatus == WPS_CREDENTIALS_FOUND){
-            ESP_LOGI("..", "Ready for API");
-            ESP_ERROR_CHECK(esp_wifi_connect());
-            xTaskCreatePinnedToCore(httpTask, "API", 16*1024, NULL, 5, NULL, 1);
-        }
-    #endif
+    wps_status_t wpsStatus = credentialsCheck();  
+    if(wpsStatus == WPS_CREDENTIALS_FOUND){
+        ESP_LOGI("..", "Ready for API");
+        ESP_ERROR_CHECK(esp_wifi_connect());
+        lvgl_release();
+
+        xTaskCreatePinnedToCore(httpTask, "API", 16*1024, NULL, 3, NULL, 1);
+        //vTaskDelay(30000 / portTICK_PERIOD_MS);
+    }
+    for(;;){
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
 }

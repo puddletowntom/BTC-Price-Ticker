@@ -16,5 +16,6 @@
         "utility": "c",
         "variant": "c",
         "esp_wifi.h": "c"
-    }
+    },
+    "idf.adapterTargetName": "esp32s3"
 }
