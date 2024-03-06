@@ -2,6 +2,11 @@
 
 ![pic1](pics/pic1.png)
 
+# WARNING!!
+
+Problems still remain with this project when using Wi-Fi at the same time as LCD. Wi-Fi connection is inconsistent and sometimes fails a HTTP request. 
+Another attempt was made in a different project where i failed to get Wi-Fi working at all with display. Both RGB display and Wi-Fi use PSRAM so there is a problem with shared resources. Getting around this may require a change to the hardware. I was thinking of simply using 2 ESP32s with 1 dedicated to RF. Perhaps there is a clever solution around temporarily disabling SPI bus for LCD on Wi-Fi commands or maybe some internal changes around LCD initialisation. Solving this problem has been too time consuming and a more careful design of the hardware would have been better I think. 
+
 # Introduction
 
 The Bitcoin metrics tracker was designed to sit near your desktop and keep an eye on several key important metrics on the Bitcoin network. These metrics include the Bitcoin price, the total Bitcoin marketcap, the total Bitcoin supply, the hash rate of the network, the current number of Bitcoins rewarded per block, the estimated time interval between blocks mined, the number of blocks mined so far and the remaining blocks left to mine in the current 4 year cycle. It uses Wi-Fi to connect to Blockchain.com to update the metrics at regular intervals. There is no need to hard code Wi-Fi credentials as there is a WPS setup for synchronisation with your router. Router credentials are then saved to flash memory via NVS so that you only have to do it one time. The green light on the screen indicates if Wi-Fi is connected. The green light will switch off if disconnected with the router. It will try to reconnect when it disconnects. The spinner around the green light is when the data is updating. 
